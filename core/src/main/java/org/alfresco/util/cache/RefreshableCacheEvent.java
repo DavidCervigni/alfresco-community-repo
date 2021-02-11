@@ -7,12 +7,12 @@ public interface RefreshableCacheEvent extends Serializable
     /**
      * Get the cache id
      */
-    public String getCacheId();
+    String getCacheId();
     
         
     /**
      * Get the affected key/tenant id
      */
-    public String getKey();
+    String getKey();
     
 }

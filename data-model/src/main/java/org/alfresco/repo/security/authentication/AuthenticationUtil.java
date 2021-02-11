@@ -108,25 +108,26 @@ public class AuthenticationUtil implements InitializingBean
 
     public static String maskUsername(String userName)
     {
-        if (userName != null)
+        if (userName == null)
         {
-            try
-            {
-                if (userName.length() >= 2)
-                {
-                    return userName.substring(0, 2) + new String(new char[(userName.length() - 2)]).replace("\0", "*");
-                }
-            }
-            catch (Exception e)
-            {
-                if (logger.isDebugEnabled())
-                {
-                    logger.debug("Failed to mask the username because: " + e.getMessage(), e);
-                }
-            }
-            return userName;
+            return null;
         }
-        return null;
+
+        try
+        {
+            if (userName.length() >= 2)
+            {
+                return userName.substring(0, 2) + new String(new char[(userName.length() - 2)]).replace("\0", "*");
+            }
+        }
+        catch (Exception e)
+        {
+            if (logger.isDebugEnabled())
+            {
+                logger.debug("Failed to mask the username because: " + e.getMessage(), e);
+            }
+        }
+        return userName;
     }
 
     public static String getMaskedUsername(Authentication authentication)
@@ -149,7 +150,7 @@ public class AuthenticationUtil implements InitializingBean
      */
     private static UsernamePasswordAuthenticationToken getAuthenticationToken(String userName, UserDetails providedDetails)
     {
-        UserDetails ud = null;
+        UserDetails ud;
         if (userName.equals(SYSTEM_USER_NAME))
         {
             GrantedAuthority[] gas = new GrantedAuthority[1];
@@ -184,10 +185,9 @@ public class AuthenticationUtil implements InitializingBean
      */
     private static UserDetails getDefaultUserDetails(String userName)
     {
-        GrantedAuthority[] gas = new GrantedAuthority[1];
+        final GrantedAuthority[] gas = new GrantedAuthority[1];
         gas[0] = new GrantedAuthorityImpl("ROLE_AUTHENTICATED");
-        UserDetails ud = new User(userName, "", true, true, true, true, gas);
-        return ud;
+        return new User(userName, "", true, true, true, true, gas);
     }
 
     /**
@@ -199,10 +199,7 @@ public class AuthenticationUtil implements InitializingBean
         {
             return ((UserDetails) authentication.getPrincipal()).getUsername();
         }
-        else
-        {
-            return authentication.getPrincipal().toString();
-        }
+        return authentication.getPrincipal().toString();
     }
 
     /**
@@ -264,33 +261,31 @@ public class AuthenticationUtil implements InitializingBean
             clearCurrentSecurityContext();
             return null;
         }
-        else
+
+        if (logger.isTraceEnabled())
         {
+            logger.trace("Setting fully authenticated principal: " + getMaskedUsername(authentication));
+        }
+        Context context = ContextHolder.getContext();
+        AlfrescoSecureContext sc;
+        if (!(context instanceof AlfrescoSecureContext))
+        {
+            sc = new AlfrescoSecureContextImpl();
+            ContextHolder.setContext(sc);
             if (logger.isTraceEnabled())
             {
-                logger.trace("Setting fully authenticated principal: " + getMaskedUsername(authentication));
+                logger.trace("Setting new secure context: " + sc + " on thread: " + Thread.currentThread().getName());
             }
-            Context context = ContextHolder.getContext();
-            AlfrescoSecureContext sc = null;
-            if ((context == null) || !(context instanceof AlfrescoSecureContext))
-            {
-                sc = new AlfrescoSecureContextImpl();
-                ContextHolder.setContext(sc);
-                if (logger.isTraceEnabled())
-                {
-                    logger.trace("Setting new secure context: " + sc + " on thread: " + Thread.currentThread().getName());
-                }
-            }
-            else
-            {
-                sc = (AlfrescoSecureContext) context;
-            }
-            authentication.setAuthenticated(true);
-            // Sets real and effective
-            sc.setRealAuthentication(authentication);
-            sc.setEffectiveAuthentication(authentication);
-            return authentication;
         }
+        else
+        {
+            sc = (AlfrescoSecureContext) context;
+        }
+        authentication.setAuthenticated(true);
+        // Sets real and effective
+        sc.setRealAuthentication(authentication);
+        sc.setEffectiveAuthentication(authentication);
+        return authentication;
     }
     
     /**
@@ -344,39 +339,37 @@ public class AuthenticationUtil implements InitializingBean
             clearCurrentSecurityContext();
             return null;
         }
+
+        if (logger.isTraceEnabled())
+        {
+            logger.trace("Setting RunAs principal: " + getMaskedUsername(authentication));
+        }
+        Context context = ContextHolder.getContext();
+        AlfrescoSecureContext sc;
+        if (!(context instanceof AlfrescoSecureContext))
+        {
+            sc = new AlfrescoSecureContextImpl();
+            ContextHolder.setContext(sc);
+            if (logger.isTraceEnabled())
+            {
+                logger.trace("Setting new secure context: " + sc + " on thread: " + Thread.currentThread().getName());
+            }
+        }
         else
+        {
+            sc = (AlfrescoSecureContext) context;
+        }
+        authentication.setAuthenticated(true);
+        if (sc.getRealAuthentication() == null)
         {
             if (logger.isTraceEnabled())
             {
-                logger.trace("Setting RunAs principal: " + getMaskedUsername(authentication));
+                logger.trace("There is no fully authenticated principal. Setting fully authenticated principal: " + getMaskedUsername(authentication));
             }
-            Context context = ContextHolder.getContext();
-            AlfrescoSecureContext sc = null;
-            if ((context == null) || !(context instanceof AlfrescoSecureContext))
-            {
-                sc = new AlfrescoSecureContextImpl();
-                ContextHolder.setContext(sc);
-                if (logger.isTraceEnabled())
-                {
-                    logger.trace("Setting new secure context: " + sc + " on thread: " + Thread.currentThread().getName());
-                }
-            }
-            else
-            {
-                sc = (AlfrescoSecureContext) context;
-            }
-            authentication.setAuthenticated(true);
-            if (sc.getRealAuthentication() == null)
-            {
-                if (logger.isTraceEnabled())
-                {
-                    logger.trace("There is no fully authenticated principal. Setting fully authenticated principal: " + getMaskedUsername(authentication));
-                }
-                sc.setRealAuthentication(authentication);
-            }
-            sc.setEffectiveAuthentication(authentication);
-            return authentication;
+            sc.setRealAuthentication(authentication);
         }
+        sc.setEffectiveAuthentication(authentication);
+        return authentication;
     }
     
     /**
@@ -389,7 +382,7 @@ public class AuthenticationUtil implements InitializingBean
     public static Authentication getRunAsAuthentication() throws AuthenticationException
     {
         Context context = ContextHolder.getContext();
-        if ((context == null) || !(context instanceof AlfrescoSecureContext))
+        if (!(context instanceof AlfrescoSecureContext))
         {
             return null;
         }
@@ -406,7 +399,7 @@ public class AuthenticationUtil implements InitializingBean
     public static Authentication getFullAuthentication() throws AuthenticationException
     {
         Context context = ContextHolder.getContext();
-        if ((context == null) || !(context instanceof AlfrescoSecureContext))
+        if (!(context instanceof AlfrescoSecureContext))
         {
             return null;
         }
@@ -423,7 +416,7 @@ public class AuthenticationUtil implements InitializingBean
     public static String getRunAsUser() throws AuthenticationException
     {
         Context context = ContextHolder.getContext();
-        if ((context == null) || !(context instanceof AlfrescoSecureContext))
+        if (!(context instanceof AlfrescoSecureContext))
         {
             return null;
         }
@@ -461,7 +454,7 @@ public class AuthenticationUtil implements InitializingBean
     public static String getFullyAuthenticatedUser() throws AuthenticationException
     {
         Context context = ContextHolder.getContext();
-        if ((context == null) || !(context instanceof AlfrescoSecureContext))
+        if (!(context instanceof AlfrescoSecureContext))
         {
             return null;
         }
@@ -609,10 +602,7 @@ public class AuthenticationUtil implements InitializingBean
             {
                 throw (RuntimeException) exception;
             }
-            else
-            {
-                throw new RuntimeException("Error during run as.", exception);
-            }
+            throw new RuntimeException("Error during run as.", exception);
         }
         finally
         {
@@ -650,21 +640,14 @@ public class AuthenticationUtil implements InitializingBean
         @Override
         protected Stack<Authentication> initialValue()
         {
-            return new Stack<Authentication>();
+            return new Stack<>();
         }
     }
     
-    private static ThreadLocal<Stack<Authentication>> threadLocalFullAuthenticationStack = new ThreadLocalStack();
-    private static ThreadLocal<Stack<Authentication>> threadLocalRunAsAuthenticationStack = new ThreadLocalStack();
+    private static final ThreadLocal<Stack<Authentication>> threadLocalFullAuthenticationStack  = new ThreadLocalStack();
+    private static final ThreadLocal<Stack<Authentication>> threadLocalRunAsAuthenticationStack = new ThreadLocalStack();
     
-    private static ThreadLocal<Stack<String>> threadLocalTenantDomainStack = new ThreadLocal<Stack<String>>()
-                                                                                    {
-                                                                                        @Override
-                                                                                        protected Stack<String> initialValue()
-                                                                                        {
-                                                                                            return new Stack<String>();
-                                                                                        }
-                                                                                    };
+    private static final ThreadLocal<Stack<String>> threadLocalTenantDomainStack = ThreadLocal.withInitial(Stack::new);
     
     /**
      * Push the current authentication context onto a threadlocal stack.
@@ -757,29 +740,30 @@ public class AuthenticationUtil implements InitializingBean
     public static Pair<String, String> getUserTenant(String userName)
     {
         String tenantDomain = TenantContextHolder.getTenantDomain();
-        if (tenantDomain == null)
+        if (tenantDomain != null)
         {
-            tenantDomain = TenantService.DEFAULT_DOMAIN;
-            
-            if ((userName != null) && isMtEnabled())
-            {
-                // MT implied domain from username (for backwards compatibility)
-                int idx = userName.indexOf(TenantService.SEPARATOR);
-                if ((idx > 0) && (idx < (userName.length()-1)))
-                {
-                    tenantDomain = userName.substring(idx+1);
-                    if (tenantDomain.indexOf(TenantService.SEPARATOR) > 0)
-                    {
-                        throw new AlfrescoRuntimeException("Unexpected tenant: "+tenantDomain+" (contains @)");
-                    }
+            return new Pair<>(userName, tenantDomain);
+        }
+        tenantDomain = TenantService.DEFAULT_DOMAIN;
 
-                    if (logger.isDebugEnabled())
-                    {
-                        logger.debug("Tenant domain implied: userName=" + maskUsername(userName) + ", tenantDomain=" + tenantDomain);
-                    }
+        if ((userName != null) && isMtEnabled())
+        {
+            // MT implied domain from username (for backwards compatibility)
+            final int idx = userName.indexOf(TenantService.SEPARATOR);
+            if ((idx > 0) && (idx < (userName.length()-1)))
+            {
+                tenantDomain = userName.substring(idx+1);
+                if (tenantDomain.indexOf(TenantService.SEPARATOR) > 0)
+                {
+                    throw new AlfrescoRuntimeException("Unexpected tenant: "+tenantDomain+" (contains @)");
+                }
+
+                if (logger.isDebugEnabled())
+                {
+                    logger.debug("Tenant domain implied: userName=" + maskUsername(userName) + ", tenantDomain=" + tenantDomain);
                 }
             }
         }
-        return new Pair<String, String>(userName, tenantDomain);
+        return new Pair<>(userName, tenantDomain);
     }
 }

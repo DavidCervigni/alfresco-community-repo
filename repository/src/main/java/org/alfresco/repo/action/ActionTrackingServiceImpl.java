@@ -48,7 +48,7 @@ import org.alfresco.service.cmr.action.ExecutionSummary;
 import org.alfresco.service.cmr.repository.NodeRef;
 import org.alfresco.service.cmr.repository.NodeService;
 import org.alfresco.service.transaction.TransactionService;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -180,45 +180,37 @@ public class ActionTrackingServiceImpl implements ActionTrackingService
            final Date endedAt = action.getExecutionEndDate();
            final NodeRef actionNode = action.getNodeRef();
            
-           AlfrescoTransactionSupport.bindListener(new TransactionListenerAdapter()
+           AlfrescoTransactionSupport.bindListener(new TransactionListener()
            {
                public void afterCommit()
                {
                   transactionService.getRetryingTransactionHelper().doInTransaction(
-                      new RetryingTransactionCallback<Object>()
-                      {
-                         public Object execute() throws Throwable
-                         {
-                           // Update the action as the system user
-                          return AuthenticationUtil.runAs(new RunAsWork<Action>() 
-                             {
-                                public Action doWork() throws Exception
-                                {
-                                   // Ensure the action persisted node still exists, and wasn't deleted
-                                   //  between when it loaded running and now
-                                   if( !nodeService.exists(actionNode) )
-                                   {
-                                       // Persisted node has gone, nothing to update
-                                       return null;
-                                   }
-                                    
-                                   // Grab the latest version of the action
-                                   ActionImpl action = (ActionImpl) runtimeActionService
-                                   .createAction(actionNode);
+                      (RetryingTransactionCallback<Object>) () -> {
+                        // Update the action as the system user
+                       return AuthenticationUtil.runAs((RunAsWork<Action>) () -> {
+                          // Ensure the action persisted node still exists, and wasn't deleted
+                          //  between when it loaded running and now
+                          if( !nodeService.exists(actionNode) )
+                          {
+                              // Persisted node has gone, nothing to update
+                              return null;
+                          }
 
-                                   // Update it
-                                   action.setExecutionStatus(ActionStatus.Completed);
-                                   action.setExecutionFailureMessage(null);
-                                   action.setExecutionStartDate(startedAt);
-                                   action.setExecutionEndDate(endedAt);
-                                   runtimeActionService.saveActionImpl(actionNode, action);
+                          // Grab the latest version of the action
+                          ActionImpl action1 = (ActionImpl) runtimeActionService
+                          .createAction(actionNode);
 
-                                   // All done
-                                   return action;
-                                }
-                             }, AuthenticationUtil.SYSTEM_USER_NAME
-                          );
-                         }
+                          // Update it
+                          action1.setExecutionStatus(ActionStatus.Completed);
+                          action1.setExecutionFailureMessage(null);
+                          action1.setExecutionStartDate(startedAt);
+                          action1.setExecutionEndDate(endedAt);
+                          runtimeActionService.saveActionImpl(actionNode, action1);
+
+                          // All done
+                          return action1;
+                       }, AuthenticationUtil.SYSTEM_USER_NAME
+                       );
                       }, false, true
                   );
                }
@@ -242,7 +234,7 @@ public class ActionTrackingServiceImpl implements ActionTrackingService
     
     private void recordActionExecuting(ActionImpl action, NodeRef actionedUponNodeRef)
     {
-        if (logger.isDebugEnabled() == true)
+        if (logger.isDebugEnabled())
         {
             logger.debug("Action " + action + " with provisional key " + generateCacheKey(action)
                     + " has begun exection");
@@ -390,53 +382,45 @@ public class ActionTrackingServiceImpl implements ActionTrackingService
 
             // Have the details updated on the action as soon
             // as the transaction has finished rolling back
-            AlfrescoTransactionSupport.bindListener(new TransactionListenerAdapter()
+            AlfrescoTransactionSupport.bindListener(new TransactionListener()
             {
                 public void afterRollback()
                 {
                     transactionService.getRetryingTransactionHelper().doInTransaction(
-                            new RetryingTransactionCallback<Object>()
-                            {
-                                public Object execute() throws Throwable
+                        (RetryingTransactionCallback<Object>) () -> {
+                            // Update the action as the system user
+                            return AuthenticationUtil.runAs((RunAsWork<Action>) () -> {
+                                // Grab the latest version of the
+                                // action
+                                ActionImpl action1 = (ActionImpl) runtimeActionService
+                                        .createAction(actionNode);
+
+                                // Update it
+                                if (exception instanceof ActionCancelledException)
                                 {
-                                    // Update the action as the system user
-                                    return AuthenticationUtil.runAs(new RunAsWork<Action>()
-                                    {
-                                        public Action doWork() throws Exception
-                                        {
-                                            // Grab the latest version of the
-                                            // action
-                                            ActionImpl action = (ActionImpl) runtimeActionService
-                                                    .createAction(actionNode);
-
-                                            // Update it
-                                            if (exception instanceof ActionCancelledException)
-                                            {
-                                                action.setExecutionStatus(ActionStatus.Cancelled);
-                                                action.setExecutionFailureMessage(null);
-                                            }
-                                            else
-                                            {
-                                                action.setExecutionStatus(ActionStatus.Failed);
-                                                action.setExecutionFailureMessage(exception.getMessage());
-                                            }
-                                            action.setExecutionStartDate(startedAt);
-                                            action.setExecutionEndDate(endedAt);
-                                            runtimeActionService.saveActionImpl(actionNode, action);
-
-                                            if (logger.isDebugEnabled() == true)
-                                            {
-                                                logger.debug("Recorded failure of action "
-                                                        + actionId + ", node " + actionNode
-                                                        + " due to " + message);
-                                            }
-
-                                            // All done
-                                            return action;
-                                        }
-                                    }, AuthenticationUtil.SYSTEM_USER_NAME);
+                                    action1.setExecutionStatus(ActionStatus.Cancelled);
+                                    action1.setExecutionFailureMessage(null);
                                 }
-                            }, false, true);
+                                else
+                                {
+                                    action1.setExecutionStatus(ActionStatus.Failed);
+                                    action1.setExecutionFailureMessage(exception.getMessage());
+                                }
+                                action1.setExecutionStartDate(startedAt);
+                                action1.setExecutionEndDate(endedAt);
+                                runtimeActionService.saveActionImpl(actionNode, action1);
+
+                                if (logger.isDebugEnabled())
+                                {
+                                    logger.debug("Recorded failure of action "
+                                            + actionId + ", node " + actionNode
+                                            + " due to " + message);
+                                }
+
+                                // All done
+                                return action1;
+                            }, AuthenticationUtil.SYSTEM_USER_NAME);
+                        }, false, true);
                 }
             });
         }

@@ -8,13 +8,13 @@ public interface RefreshableCacheListener
      * 
      * @param  refreshableCacheEvent             the cache event
      */
-    public void onRefreshableCacheEvent(RefreshableCacheEvent refreshableCacheEvent);
+     void onRefreshableCacheEvent(RefreshableCacheEvent refreshableCacheEvent);
 
     /**
      * Cache id so broadcast can be constrained to matching caches
      *  
      * @return              the cache ID
      */
-    public String getCacheId();
+    String getCacheId();
 
 }

@@ -73,7 +73,7 @@ import org.alfresco.service.cmr.security.AuthorityType;
 import org.alfresco.service.cmr.security.PersonService;
 import org.alfresco.util.Pair;
 import org.alfresco.util.UrlUtil;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.commons.validator.routines.EmailValidator;
@@ -495,35 +495,31 @@ public class MailActionExecuter extends ActionExecuterAbstractBase
         if(finalMessages!=null){
             if (sendAfterCommit(ruleAction))
             {
-                AlfrescoTransactionSupport.bindListener(new TransactionListenerAdapter()
+                AlfrescoTransactionSupport.bindListener(new TransactionListener()
                 {
                     @Override
                     public void afterCommit()
                     {
                         RetryingTransactionHelper helper = serviceRegistry.getTransactionService().getRetryingTransactionHelper();
-                        helper.doInTransaction(new RetryingTransactionCallback<Void>()
-                        {
-                            @Override
-                            public Void execute() throws Throwable
-                            {
-                                for (MimeMessageHelper message : finalMessages) {
-                                    sendEmail(ruleAction, message);
-                                }
-                                
-                                return null;
+                        helper.doInTransaction((RetryingTransactionCallback<Void>) () -> {
+                            for (MimeMessageHelper message : finalMessages) {
+                                sendEmail(ruleAction, message);
                             }
+
+                            return null;
                         }, false, true);
                     }
                 });
             }
             else 
             {
-                    for (MimeMessageHelper message : finalMessages) {
+                for (MimeMessageHelper message : finalMessages)
+                {
                     if (message != null)
                     {
                         sendEmail(ruleAction, message);
                     }
-                    }
+                }
             }
         }
 
@@ -549,7 +545,7 @@ public class MailActionExecuter extends ActionExecuterAbstractBase
     private boolean sendAfterCommit(Action action)
     {
         Boolean sendAfterCommit = (Boolean) action.getParameterValue(PARAM_SEND_AFTER_COMMIT);
-        return sendAfterCommit == null ? false : sendAfterCommit.booleanValue();
+        return sendAfterCommit != null && sendAfterCommit;
     }
     
     private MimeMessageHelper[] prepareEmails(final Action ruleAction, final NodeRef actionedUponNodeRef)

@@ -67,14 +67,14 @@ public abstract class AlfrescoTransactionSupport extends TransactionSupportUtil
      */
     public static final int SESSION_SYNCHRONIZATION_ORDER = 800;
 
-    private static Log logger = LogFactory.getLog(AlfrescoTransactionSupport.class);
+    private static final Log logger = LogFactory.getLog(AlfrescoTransactionSupport.class);
     
     /**
      * 
      * @author Derek Hulley
      * @since 2.1.4
      */
-    public static enum TxnReadState
+    public enum TxnReadState
     {
         /** No transaction is active */
         TXN_NONE,
@@ -210,26 +210,14 @@ public abstract class AlfrescoTransactionSupport extends TransactionSupportUtil
     {
        
         // bind the service in
-        boolean bound = bindListener((TransactionListener) integrityChecker, COMMIT_ORDER_INTEGRITY);
+        boolean bound = bindListener(integrityChecker, COMMIT_ORDER_INTEGRITY);
         
         if (logger.isDebugEnabled())
         {
             logBoundService(integrityChecker, bound); 
         }
     }
-    
-    /**
-     * Method maintained for backward compatibility:
-     * <a href="https://issues.alfresco.com/jira/browse/ACE-2801">ACE-2801: Package change for TransactionListener</a>.
-     * 
-     * @see TransactionSupportUtil
-     * @see #bindListener(org.alfresco.util.transaction.TransactionListener)
-     */
-    public static void bindListener(org.alfresco.repo.transaction.TransactionListener listener)
-    {
-        AlfrescoTransactionSupport.bindListener((org.alfresco.util.transaction.TransactionListener) listener);
-    }
-    
+
     /**
      * Method that registers a <tt>Listener</tt> against
      * the transaction.
@@ -243,7 +231,7 @@ public abstract class AlfrescoTransactionSupport extends TransactionSupportUtil
      */
     public static void bindListener(TransactionListener listener)
     {
-        boolean bound = false;
+        boolean bound;
         
         if (listener instanceof IntegrityChecker)
         {
@@ -285,15 +273,4 @@ public abstract class AlfrescoTransactionSupport extends TransactionSupportUtil
                     "   service: " + service);
         }
     }
-    
-    /**
-     * No-op
-     * 
-     * @deprecated      No longer does anything
-     */
-    public static void flush()
-    {
-        // No-op
-    }
-     
-}    
+}

@@ -57,7 +57,6 @@ import org.alfresco.service.transaction.TransactionService;
 import org.alfresco.util.BaseSpringTest;
 import org.alfresco.util.GUID;
 import org.alfresco.util.Pair;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
 import org.apache.commons.lang3.mutable.MutableInt;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -685,21 +684,15 @@ public class RetryingTransactionHelperTest extends BaseSpringTest
     public void testStartNewTransaction() throws Exception
     {
         // MNT-10096
-        class CustomListenerAdapter extends TransactionListenerAdapter
+        class CustomListenerAdapter implements org.alfresco.util.transaction.TransactionListener
         {
             private String newTxnId;
 
             @Override
             public void afterRollback()
             {
-                newTxnId = txnHelper.doInTransaction(new RetryingTransactionCallback<String>()
-                {
-                    @Override
-                    public String execute() throws Throwable
-                    {
-                        return AlfrescoTransactionSupport.getTransactionId();
-                    }
-                }, true, false);
+                newTxnId = txnHelper.doInTransaction(
+                    AlfrescoTransactionSupport::getTransactionId, true, false);
             }
         }
 

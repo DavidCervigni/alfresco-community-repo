@@ -66,7 +66,7 @@ import org.alfresco.service.namespace.NamespaceService;
 import org.alfresco.service.namespace.QName;
 import org.alfresco.service.transaction.TransactionService;
 import org.alfresco.util.PropertyCheck;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.InitializingBean;
@@ -389,7 +389,7 @@ public class EventGenerator extends AbstractLifecycleBean implements Initializin
         //NOOP
     }
 
-    protected class EventTransactionListener extends TransactionListenerAdapter
+    protected class EventTransactionListener implements TransactionListener
     {
         @Override
         public void afterCommit()

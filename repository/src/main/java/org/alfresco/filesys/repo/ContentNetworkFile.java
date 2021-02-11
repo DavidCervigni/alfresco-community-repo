@@ -43,7 +43,6 @@ import org.alfresco.model.ContentModel;
 import org.alfresco.repo.content.MimetypeMap;
 import org.alfresco.repo.content.filestore.FileContentReader;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
 import org.alfresco.service.cmr.repository.ContentAccessor;
 import org.alfresco.service.cmr.repository.ContentData;
 import org.alfresco.service.cmr.repository.ContentIOException;
@@ -54,6 +53,7 @@ import org.alfresco.service.cmr.repository.MimetypeService;
 import org.alfresco.service.cmr.repository.NodeRef;
 import org.alfresco.service.cmr.repository.NodeService;
 import org.alfresco.service.cmr.usage.ContentQuotaException;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.extensions.surf.util.I18NUtil;
@@ -510,7 +510,7 @@ public class ContentNetworkFile extends NodeRefNetworkFile
                 }
 
                 // Tidy up after ourselves after a successful commit. Otherwise leave things to allow a retry. 
-                AlfrescoTransactionSupport.bindListener(new TransactionListenerAdapter()
+                AlfrescoTransactionSupport.bindListener(new TransactionListener()
                 {
                     @Override
                     public void afterCommit()
@@ -523,7 +523,6 @@ public class ContentNetworkFile extends NodeRefNetworkFile
                                 setClosed( true);
                             }
                         }
-                       
                     }
                 });
             }

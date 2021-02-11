@@ -45,7 +45,7 @@ import org.alfresco.repo.thumbnail.script.ScriptThumbnailService;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.RetryingTransactionHelper;
 import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.service.ServiceRegistry;
 import org.alfresco.service.cmr.action.Action;
 import org.alfresco.service.cmr.action.ActionCondition;
@@ -680,7 +680,7 @@ public class ThumbnailServiceImplTest extends BaseAlfrescoSpringTest
     /**
      * A simple listener which will delete the given node after the transition is completed
      */
-    private class TestNodeDeleterListener extends TransactionListenerAdapter
+    private class TestNodeDeleterListener implements TransactionListener
     {
         private final NodeRef nodeRef;
         private TestNodeDeleterListener(NodeRef nodeRef)

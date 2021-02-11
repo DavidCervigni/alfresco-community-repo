@@ -55,7 +55,7 @@ public class PropTablesCleaner
     private static final long LOCK_TTL = 360000L;
     private static final QName LOCK_QNAME = QName.createQName(NamespaceService.SYSTEM_MODEL_1_0_URI, PropTablesCleaner.class.getName());
 
-    private static Log logger = LogFactory.getLog(PropTablesCleaner.class);
+    private static final Log logger = LogFactory.getLog(PropTablesCleaner.class);
 
     public void setPropertyValueDAO(PropertyValueDAO propertyValueDAO)
     {

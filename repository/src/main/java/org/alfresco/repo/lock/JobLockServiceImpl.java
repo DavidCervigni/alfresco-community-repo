@@ -35,7 +35,7 @@ import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport.TxnReadState;
 import org.alfresco.repo.transaction.RetryingTransactionHelper;
 import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.repo.transaction.TransactionalResourceHelper;
 import org.alfresco.service.namespace.QName;
 import org.alfresco.util.GUID;
@@ -586,7 +586,7 @@ public class JobLockServiceImpl implements JobLockService
      * @author Derek Hulley
      * @since 3.2
      */
-    private class LockTransactionListener extends TransactionListenerAdapter
+    private class LockTransactionListener implements TransactionListener
     {
         /**
          * Release any open locks with extreme prejudice i.e. the commit will fail if the

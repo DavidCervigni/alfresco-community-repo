@@ -27,7 +27,7 @@ package org.alfresco.service.cmr.activities;
 
 import org.alfresco.sync.repo.Client;
 import org.alfresco.repo.transaction.RetryingTransactionHelper;
-import org.alfresco.repo.transaction.TransactionListener;
+import org.alfresco.util.transaction.TransactionListener;
 
 /**
  * A Transaction Listener to post activities once the transaction has been committed,
@@ -64,11 +64,8 @@ public class ActivitiesTransactionListener implements TransactionListener
     public void afterCommit()
     {
         //Activity posting needs a new transaction
-        retryingTransactionHelper.doInTransaction(new RetryingTransactionHelper.RetryingTransactionCallback<Void>()
-        {
-            @Override
-            public Void execute() throws Throwable
-            {
+        retryingTransactionHelper.doInTransaction(
+            (RetryingTransactionHelper.RetryingTransactionCallback<Void>) () -> {
                 if (activityType != null && activityInfo != null)
                 {
                     poster.postFileFolderActivity(activityType, null, tenantDomain,
@@ -76,32 +73,6 @@ public class ActivitiesTransactionListener implements TransactionListener
                             activityInfo.getFileName(), appTool, client, activityInfo.getFileInfo());
                 }
                 return null;
-            }
-        }, false, true);
+            }, false, true);
     }
-
-    @Override
-    public void flush()
-    {
-        //do nothing
-    }
-
-    @Override
-    public void beforeCommit(boolean readOnly)
-    {
-        //do nothing
-    }
-
-    @Override
-    public void beforeCompletion()
-    {
-        //do nothing
-    }
-
-    @Override
-    public void afterRollback()
-    {
-        //do nothing
-    }
-
 }

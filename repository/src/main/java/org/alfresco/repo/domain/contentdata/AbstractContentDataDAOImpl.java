@@ -44,7 +44,7 @@ import org.alfresco.repo.transaction.TransactionalResourceHelper;
 import org.alfresco.service.cmr.repository.ContentData;
 import org.alfresco.util.EqualsHelper;
 import org.alfresco.util.Pair;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.dao.ConcurrencyFailureException;
@@ -175,8 +175,7 @@ public abstract class AbstractContentDataDAOImpl implements ContentDataDAO
         {
             throw new IllegalArgumentException("ContentData values cannot be null");
         }
-        Pair<Long, ContentData> entityPair = contentDataCache.getOrCreateByValue(contentData);
-        return entityPair;
+        return contentDataCache.getOrCreateByValue(contentData);
     }
 
     @Override
@@ -214,7 +213,7 @@ public abstract class AbstractContentDataDAOImpl implements ContentDataDAO
             pair = contentUrlCache.getOrCreateByValue(contentUrl);
             result = contentUrlCache.updateValue(pair.getFirst(), contentUrl);
         }
-        return result == 1 ? true : false;
+        return result == 1;
     }
 
     @Override
@@ -291,7 +290,6 @@ public abstract class AbstractContentDataDAOImpl implements ContentDataDAO
         {
             throw new ConcurrencyFailureException("ContentData with ID " + id + " no longer exists");
         }
-        return;
     }
 
     /**
@@ -444,9 +442,7 @@ public abstract class AbstractContentDataDAOImpl implements ContentDataDAO
         }
 
         // Build the ContentData
-        ContentData contentData = new ContentData(contentUrl, mimetype, size, encoding, locale);
-        // Done
-        return contentData;
+        return new ContentData(contentUrl, mimetype, size, encoding, locale);
     }
 
     /**
@@ -490,9 +486,7 @@ public abstract class AbstractContentDataDAOImpl implements ContentDataDAO
         }
         
         // Create ContentDataEntity
-        ContentDataEntity contentDataEntity = createContentDataEntity(contentUrlId, mimetypeId, encodingId, localeId);
-        // Done
-        return contentDataEntity;
+        return createContentDataEntity(contentUrlId, mimetypeId, encodingId, localeId);
     }
     
     /**
@@ -705,7 +699,7 @@ public abstract class AbstractContentDataDAOImpl implements ContentDataDAO
      * 
      * @author Derek Hulley
      */
-    public class ContentUrlDeleteTransactionListener extends TransactionListenerAdapter
+    public class ContentUrlDeleteTransactionListener implements TransactionListener
     {
         @Override
         public void beforeCommit(boolean readOnly)

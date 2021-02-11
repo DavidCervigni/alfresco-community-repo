@@ -25,7 +25,7 @@
  */
 package org.alfresco.repo.rule;
 
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.util.GUID;
 
 /**
@@ -33,7 +33,7 @@ import org.alfresco.util.GUID;
  * 
  * @author Roy Wetherall
  */
-public class RuleTransactionListener extends TransactionListenerAdapter
+public class RuleTransactionListener implements TransactionListener
 {
 	/**
 	 * Id used in equals and hash
@@ -56,7 +56,7 @@ public class RuleTransactionListener extends TransactionListenerAdapter
 	}
 	
 	/**
-	 * @see org.alfresco.repo.transaction.TransactionListener#beforeCommit(boolean)
+	 * @see org.alfresco.util.transaction.TransactionListener#beforeCommit(boolean)
 	 */
 	@Override
 	public void beforeCommit(boolean readOnly)

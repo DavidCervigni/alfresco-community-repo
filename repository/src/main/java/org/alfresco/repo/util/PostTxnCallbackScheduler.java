@@ -29,7 +29,7 @@ import java.util.Objects;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.RetryingTransactionHelper;
 import org.alfresco.service.transaction.TransactionService;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -59,7 +59,7 @@ public class PostTxnCallbackScheduler
         AlfrescoTransactionSupport.bindListener(new PostTxTransactionListener(callback, uniqueId));
     }
 
-    private class PostTxTransactionListener extends TransactionListenerAdapter
+    private class PostTxTransactionListener implements TransactionListener
     {
         private final RetryingTransactionHelper.RetryingTransactionCallback callback;
         private final String id;

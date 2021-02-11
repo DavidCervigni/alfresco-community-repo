@@ -77,7 +77,6 @@ import org.alfresco.service.namespace.RegexQNamePattern;
 import org.alfresco.service.transaction.TransactionService;
 import org.alfresco.util.GUID;
 import org.alfresco.util.transaction.TransactionListener;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
 import org.alfresco.util.transaction.TransactionSupportUtil;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -414,27 +413,13 @@ public class ThumbnailServiceImpl implements ThumbnailService,
             //We can be in a read-only transaction, so force a new transaction 
             requiresNew = true;
         }
-        return txnHelper.doInTransaction(new RetryingTransactionCallback<NodeRef>()
-        {
-
-            @Override
-            public NodeRef execute() throws Throwable
-            {
-                return AuthenticationUtil.runAs(new AuthenticationUtil.RunAsWork<NodeRef>()
-                {
-                    public NodeRef doWork() throws Exception
-                    {
-                       return createThumbnailNode( node, 
-                                                   contentProperty,
-                                                    mimetype, 
-                                                    transformationOptions, 
-                                                    thumbnailName, 
-                                                    assocDetails);
-                    }
-                }, AuthenticationUtil.getSystemUserName());
-            }
-    
-        }, false, requiresNew);
+        return txnHelper.doInTransaction(() -> AuthenticationUtil.runAs(
+            () -> createThumbnailNode(node,
+                contentProperty,
+                mimetype,
+                transformationOptions,
+                thumbnailName,
+                assocDetails), AuthenticationUtil.getSystemUserName()), false, requiresNew);
         
     }
     
@@ -522,14 +507,8 @@ public class ThumbnailServiceImpl implements ThumbnailService,
 
             // Do the thumbnail transformation. Rendition Definitions are persisted underneath the Data Dictionary for which Group ALL
             // has Consumer access by default. However, we cannot assume that that access level applies for all deployments. See ALF-7334.
-            RenditionDefinition rendDefn = AuthenticationUtil.runAs(new AuthenticationUtil.RunAsWork<RenditionDefinition>()
-                {
-                    @Override
-                    public RenditionDefinition doWork() throws Exception
-                    {
-                        return renditionService.loadRenditionDefinition(renditionAssociationName);
-                    }
-                }, AuthenticationUtil.getSystemUserName());
+            RenditionDefinition rendDefn = AuthenticationUtil.runAs(
+                () -> renditionService.loadRenditionDefinition(renditionAssociationName), AuthenticationUtil.getSystemUserName());
             
             if (rendDefn == null)
             {
@@ -916,7 +895,7 @@ public class ThumbnailServiceImpl implements ThumbnailService,
         }
     }
 
-    private class ThumbnailTransactionListenerAdapter extends TransactionListenerAdapter
+    private class ThumbnailTransactionListenerAdapter implements TransactionListener
     {
         @Override
         public void afterCommit()
@@ -927,57 +906,51 @@ public class ThumbnailServiceImpl implements ThumbnailService,
             }
             final Set<ChildAssociationRef> childAssocs =  TransactionalResourceHelper.getSet(THUMBNAIL_PARENT_NODES);
 
-            AuthenticationUtil.runAs(new AuthenticationUtil.RunAsWork<Void>()
-            {
-                @Override
-                public Void doWork() throws Exception
-                {
-                    // MNT-15135: Do the property update in a new transaction, in case the parent node was already changed (has a different version) in another transaction.
-                    // This way the failures will not propagate up the retry stack.
-                    RetryingTransactionHelper txnHelper = transactionService.getRetryingTransactionHelper();
-                    txnHelper.setForceWritable(true);
-                    txnHelper.doInTransaction(new RetryingTransactionCallback<Void>()
+            AuthenticationUtil.runAs((AuthenticationUtil.RunAsWork<Void>) () -> {
+                // MNT-15135: Do the property update in a new transaction, in case the parent node was already changed (has a different version) in another transaction.
+                // This way the failures will not propagate up the retry stack.
+                RetryingTransactionHelper txnHelper = transactionService.getRetryingTransactionHelper();
+                txnHelper.setForceWritable(true);
+                txnHelper.doInTransaction((RetryingTransactionCallback<Void>) () -> {
+                    for (ChildAssociationRef childAssoc : childAssocs)
                     {
-                        @Override
-                        public Void execute() throws Throwable
+                        NodeRef thumbnailNodeRef = childAssoc.getChildRef();
+                        NodeRef sourceNodeRef = childAssoc.getParentRef();
+
+                        // check if thumbnail node exists
+                        if (thumbnailNodeRef == null || !nodeService.exists(thumbnailNodeRef))
                         {
-                            for (ChildAssociationRef childAssoc : childAssocs)
-                            {
-                                NodeRef thumbnailNodeRef = childAssoc.getChildRef();
-                                NodeRef sourceNodeRef = childAssoc.getParentRef();
-
-                                // check if thumbnail node exists
-                                if (thumbnailNodeRef == null || !nodeService.exists(thumbnailNodeRef))
-                                {
-                                    logger.debug("Thumbnail node " + thumbnailNodeRef + " does not exist. It will be skipped");
-                                    continue;
-                                }
-                                // check if source node exists
-                                if (sourceNodeRef == null || !nodeService.exists(sourceNodeRef))
-                                {
-                                    logger.debug("Parent node " + sourceNodeRef + " does not exist. It will be skipped");
-                                    continue;
-                                }
-
-                                String thumbnailName = (String) nodeService.getProperty(thumbnailNodeRef, ContentModel.PROP_NAME);
-                                // Update the parent node with the thumbnail update...
-                                if (logger.isDebugEnabled())
-                                {
-                                    logger.debug("Found cached parent node " + sourceNodeRef + " in transactional resources");
-                                    logger.debug("Adding thumbnail modification data.");
-                                }
-                                addThumbnailModificationData(thumbnailNodeRef, thumbnailName);
-                            }
-                            return null;
+                            logger.debug(
+                                "Thumbnail node " + thumbnailNodeRef + " does not exist. It will be skipped");
+                            continue;
                         }
-                    }, false, true);
+                        // check if source node exists
+                        if (sourceNodeRef == null || !nodeService.exists(sourceNodeRef))
+                        {
+                            logger.debug(
+                                "Parent node " + sourceNodeRef + " does not exist. It will be skipped");
+                            continue;
+                        }
+
+                        String thumbnailName = (String) nodeService.getProperty(thumbnailNodeRef,
+                            ContentModel.PROP_NAME);
+                        // Update the parent node with the thumbnail update...
+                        if (logger.isDebugEnabled())
+                        {
+                            logger.debug(
+                                "Found cached parent node " + sourceNodeRef + " in transactional resources");
+                            logger.debug("Adding thumbnail modification data.");
+                        }
+                        addThumbnailModificationData(thumbnailNodeRef, thumbnailName);
+                    }
                     return null;
-                }
+                }, false, true);
+                return null;
             }, AuthenticationUtil.getSystemUserName());
         }
     }
     
-    private class ThumbnailCleanupTransactionListenerAdapter extends TransactionListenerAdapter
+    private class ThumbnailCleanupTransactionListenerAdapter implements TransactionListener
     {
         @Override
         public void afterCommit()
@@ -988,32 +961,23 @@ public class ThumbnailServiceImpl implements ThumbnailService,
             }
             final Set<NodeRef> thumbnailToDelete =  TransactionalResourceHelper.getSet(THUMBNAIL_TO_DELETE_NODES);
 
-            AuthenticationUtil.runAs(new AuthenticationUtil.RunAsWork<Void>()
-            {
-                @Override
-                public Void doWork() throws Exception
-                {
-                   RetryingTransactionHelper txnHelper = transactionService.getRetryingTransactionHelper();
-                    txnHelper.setForceWritable(true);
-                    txnHelper.doInTransaction(new RetryingTransactionCallback<Void>()
+            AuthenticationUtil.runAs((AuthenticationUtil.RunAsWork<Void>) () -> {
+               RetryingTransactionHelper txnHelper = transactionService.getRetryingTransactionHelper();
+                txnHelper.setForceWritable(true);
+                txnHelper.doInTransaction((RetryingTransactionCallback<Void>) () -> {
+                    for (NodeRef node : thumbnailToDelete)
                     {
-                        @Override
-                        public Void execute() throws Throwable
-                        {
-                            for (NodeRef node : thumbnailToDelete)
-                            {
-                                // Update lastThumbnailModification on parent node
-                                // so that the thumbnail will be recreated when browsing share
-                                String thumbnailName = (String) nodeService.getProperty(node, ContentModel.PROP_NAME);
-                                addThumbnailModificationData(node, thumbnailName);
+                        // Update lastThumbnailModification on parent node
+                        // so that the thumbnail will be recreated when browsing share
+                        String thumbnailName = (String) nodeService.getProperty(node,
+                            ContentModel.PROP_NAME);
+                        addThumbnailModificationData(node, thumbnailName);
 
-                                nodeService.deleteNode(node);
-                            }
-                            return null;
-                        }
-                    }, false, true);
+                        nodeService.deleteNode(node);
+                    }
                     return null;
-                }
+                }, false, true);
+                return null;
             }, AuthenticationUtil.getSystemUserName());
         }
     }

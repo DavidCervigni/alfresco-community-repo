@@ -48,7 +48,7 @@ import org.alfresco.service.cmr.action.Action;
 import org.alfresco.service.cmr.action.ActionServiceException;
 import org.alfresco.service.cmr.repository.NodeRef;
 import org.alfresco.service.transaction.TransactionService;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -59,16 +59,16 @@ import org.apache.commons.logging.LogFactory;
  */
 public class AsynchronousActionExecutionQueueImpl implements AsynchronousActionExecutionQueue
 {
-    private static Log logger = LogFactory.getLog(AsynchronousActionExecutionQueueImpl.class);
+    private static final Log logger = LogFactory.getLog(AsynchronousActionExecutionQueueImpl.class);
     
     /** Services */
     private ActionServiceImpl  actionServiceImpl;
     private ThreadPoolExecutor threadPoolExecutor;
     private TransactionService transactionService;
-    private PolicyComponent policyComponent;
-    private Map<String, AbstractAsynchronousActionFilter>
+    private       PolicyComponent policyComponent;
+    private final Map<String, AbstractAsynchronousActionFilter>
             actionFilters = new ConcurrentHashMap<String, AbstractAsynchronousActionFilter>();
-    private String id;
+    private       String id;
 
     /**
      * We keep a record of ongoing asynchronous actions (this includes those being executed and
@@ -223,7 +223,7 @@ public class AsynchronousActionExecutionQueueImpl implements AsynchronousActionE
         }
 
         Set<RuleServiceImpl.ExecutedRuleData> executedRules =
-            (Set<RuleServiceImpl.ExecutedRuleData>) AlfrescoTransactionSupport.getResource("RuleServiceImpl.ExecutedRules");
+            AlfrescoTransactionSupport.getResource("RuleServiceImpl.ExecutedRules");
         Runnable runnable = new ActionExecutionWrapper(
                 actionService,
                 action,
@@ -297,12 +297,8 @@ public class AsynchronousActionExecutionQueueImpl implements AsynchronousActionE
             Exception e = new Exception();
             e.fillInStackTrace();
             StackTraceElement[] trace = e.getStackTrace();
-            StringBuilder sb = new StringBuilder();
-            sb.append("\n")
-              .append("Placed action on execution queue: \n")
-              .append("   Action:     " + action);
-            String msg = sb.toString();
-            sb = new StringBuilder();
+            final String msg = "\nPlaced action on execution queue: \n   Action:     " + action;
+            final StringBuilder sb = new StringBuilder();
             StackTraceUtil.buildStackTrace(msg, trace, sb, -1);
             logger.debug(sb);
         }
@@ -311,9 +307,7 @@ public class AsynchronousActionExecutionQueueImpl implements AsynchronousActionE
     private void handleAsyncActionIsCompleted(NodeRef n, Action action) {
         if (logger.isDebugEnabled())
         {
-            StringBuilder msg = new StringBuilder();
-            msg.append("Completed action ").append(action);
-            logger.debug(msg.toString());
+            logger.debug("Completed action " + action);
         }
         OngoingAsyncAction ongoing = new OngoingAsyncAction(n, action);
         ongoingActions.remove(ongoing);
@@ -322,10 +316,10 @@ public class AsynchronousActionExecutionQueueImpl implements AsynchronousActionE
     /**
      * Transaction listener used to invoke callback policies
      */
-    public class CallbackTransactionListener extends TransactionListenerAdapter
+    public class CallbackTransactionListener implements TransactionListener
     {
-        private Action action;
-        private NodeRef actionedUponNodeRef;
+        private final Action  action;
+        private final NodeRef actionedUponNodeRef;
         
         /**
          * Constructor
@@ -340,7 +334,7 @@ public class AsynchronousActionExecutionQueueImpl implements AsynchronousActionE
         }
 
         /**
-         * @see org.alfresco.repo.transaction.TransactionListenerAdapter#afterCommit()
+         * @see org.alfresco.util.transaction.TransactionListener#afterCommit()
          */
         @Override
         public void afterCommit()
@@ -355,13 +349,13 @@ public class AsynchronousActionExecutionQueueImpl implements AsynchronousActionE
      */
     private class ActionExecutionWrapper implements Runnable
     {
-        private RuntimeActionService actionService;
+        private final RuntimeActionService actionService;
 
-        private Action action;
-        private NodeRef actionedUponNodeRef;
-        private boolean checkConditions;
-        private Set<String> actionChain;
-        private Set<RuleServiceImpl.ExecutedRuleData> executedRules;
+        private final Action                                action;
+        private final NodeRef                               actionedUponNodeRef;
+        private final boolean                               checkConditions;
+        private final Set<String>                           actionChain;
+        private final Set<RuleServiceImpl.ExecutedRuleData> executedRules;
 
         /**
          * @param actionService                     the action service
@@ -406,41 +400,34 @@ public class AsynchronousActionExecutionQueueImpl implements AsynchronousActionE
                 final String tenantId = ((ActionImpl)ActionExecutionWrapper.this.action).getTenantId();
 
                 // Let the executor know it is async
-                ((ActionImpl)ActionExecutionWrapper.this.action).setExecuteAsynchronously(true);
+                ActionExecutionWrapper.this.action.setExecuteAsynchronously(true);
                 
                 // import the content
-                TenantRunAsWork<Object> actionRunAs = new TenantRunAsWork<Object>()
-                {
-                    public Object doWork() throws Exception
-                    {
-                        RetryingTransactionCallback<Object> actionCallback = new RetryingTransactionCallback<Object>()
+                TenantRunAsWork<Object> actionRunAs = () -> {
+                    RetryingTransactionCallback<Object> actionCallback = () -> {
+                        // If we have rules, apply them
+                        if (ActionExecutionWrapper.this.executedRules != null)
                         {
-                            public Object execute()
-                            {   
-                                // If we have rules, apply them
-                                if (ActionExecutionWrapper.this.executedRules != null)
-                                {
-                                    AlfrescoTransactionSupport.bindResource("RuleServiceImpl.ExecutedRules", ActionExecutionWrapper.this.executedRules);
-                                }
-                                
-                                // Allow other classes to know when this action completes
-                                AlfrescoTransactionSupport.bindListener(new CallbackTransactionListener(
-                                      ActionExecutionWrapper.this.action,
-                                      ActionExecutionWrapper.this.actionedUponNodeRef
-                                ));
-                                
-                                // Have the action run
-                                ActionExecutionWrapper.this.actionService.executeActionImpl(
-                                        ActionExecutionWrapper.this.action,
-                                        ActionExecutionWrapper.this.actionedUponNodeRef,
-                                        ActionExecutionWrapper.this.checkConditions, true,
-                                        ActionExecutionWrapper.this.actionChain);
+                            AlfrescoTransactionSupport.bindResource("RuleServiceImpl.ExecutedRules",
+                                ActionExecutionWrapper.this.executedRules);
+                        }
 
-                                return null;
-                            }
-                        };
-                        return transactionService.getRetryingTransactionHelper().doInTransaction(actionCallback);
-                    }
+                        // Allow other classes to know when this action completes
+                        AlfrescoTransactionSupport.bindListener(new CallbackTransactionListener(
+                            ActionExecutionWrapper.this.action,
+                            ActionExecutionWrapper.this.actionedUponNodeRef
+                        ));
+
+                        // Have the action run
+                        ActionExecutionWrapper.this.actionService.executeActionImpl(
+                            ActionExecutionWrapper.this.action,
+                            ActionExecutionWrapper.this.actionedUponNodeRef,
+                            ActionExecutionWrapper.this.checkConditions, true,
+                            ActionExecutionWrapper.this.actionChain);
+
+                        return null;
+                    };
+                    return transactionService.getRetryingTransactionHelper().doInTransaction(actionCallback);
                 };
                 TenantUtil.runAsUserTenant(actionRunAs, userName, tenantId);
             }

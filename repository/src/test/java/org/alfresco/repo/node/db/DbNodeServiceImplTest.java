@@ -52,7 +52,7 @@ import org.alfresco.repo.security.authentication.AuthenticationUtil;
 import org.alfresco.repo.security.authentication.AuthenticationUtil.RunAsWork;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.service.cmr.dictionary.DictionaryService;
 import org.alfresco.service.cmr.repository.ChildAssociationRef;
 import org.alfresco.service.cmr.repository.DuplicateChildNodeNameException;
@@ -163,7 +163,7 @@ public class DbNodeServiceImplTest extends BaseNodeServiceTest
     /**
      * @see DbNodeServiceImplTest#testTxnCommitTime()
      */
-    private class TestTxnCommitTimeTxnListener extends TransactionListenerAdapter
+    private class TestTxnCommitTimeTxnListener implements TransactionListener
     {
         /*
          * Note: equals hides this instance when listeners are processed
@@ -183,7 +183,7 @@ public class DbNodeServiceImplTest extends BaseNodeServiceTest
             {
                 txnIdStr = AlfrescoTransactionSupport.getTransactionId();
                 // Make a change
-                nodeService.setProperty(rootNodeRef, ContentModel.PROP_COUNTER, new Integer(5));
+                nodeService.setProperty(rootNodeRef, ContentModel.PROP_COUNTER, 5);
                 // Reschedule for removal
                 AlfrescoTransactionSupport.bindListener(this);
             }
@@ -660,8 +660,8 @@ public class DbNodeServiceImplTest extends BaseNodeServiceTest
             assertTrue("content not correct", refs.contains(n1Ref));
             
             // Double
-            Double alfLat = new Double(51.5216666);
-            Double alfLon = new Double(0.43);
+            Double alfLat = 51.5216666;
+            Double alfLon = 0.43;
             nodeService.setProperty(n1Ref.getChildRef(), ContentModel.PROP_LATITUDE, alfLat);      
             refs = nodeService.getChildAssocsByPropertyValue(parentNodeRef, ContentModel.PROP_LATITUDE, alfLat);
             assertTrue("failed to read one assoc", refs.size() == 1);

@@ -45,20 +45,20 @@ import org.quartz.JobExecutionException;
  */
 public class NodeCleanupJob implements Job
 {
-    private static Log logger = LogFactory.getLog(NodeCleanupJob.class);
+    private static final Log logger = LogFactory.getLog(NodeCleanupJob.class);
     
     public void execute(JobExecutionContext context) throws JobExecutionException
     {
-        JobDataMap jobData = context.getJobDetail().getJobDataMap();
+        final JobDataMap jobData = context.getJobDetail().getJobDataMap();
         // extract the content Cleanup to use
-        Object nodeCleanupWorkerObj = jobData.get("nodeCleanupWorker");
-        if (nodeCleanupWorkerObj == null || !(nodeCleanupWorkerObj instanceof NodeCleanupWorker))
+        final Object nodeCleanupWorkerObj = jobData.get("nodeCleanupWorker");
+        if (!(nodeCleanupWorkerObj instanceof NodeCleanupWorker))
         {
             throw new AlfrescoRuntimeException(
                     "NodeCleanupJob data must contain valid 'nodeCleanupWorker' reference");
         }
-        NodeCleanupWorker nodeCleanupWorker = (NodeCleanupWorker) nodeCleanupWorkerObj;
-        List<String> cleanupLog = nodeCleanupWorker.doClean();
+        final NodeCleanupWorker nodeCleanupWorker = (NodeCleanupWorker) nodeCleanupWorkerObj;
+        final List<String> cleanupLog = nodeCleanupWorker.doClean();
         // Done
         if (logger.isDebugEnabled())
         {

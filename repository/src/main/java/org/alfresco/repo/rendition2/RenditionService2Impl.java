@@ -676,11 +676,8 @@ public class RenditionService2Impl implements RenditionService2, InitializingBea
         if (contentData != null)
         {
             // Originally we used the contentData URL, but that is not enough if the mimetype changes.
-            String contentString = contentData.getContentUrl()+contentData.getMimetype();
-            if (contentString != null)
-            {
-                hashCode = contentString.hashCode();
-            }
+            final String contentString = contentData.getContentUrl()+contentData.getMimetype();
+            hashCode = contentString.hashCode();
         }
         return hashCode;
     }
@@ -713,13 +710,12 @@ public class RenditionService2Impl implements RenditionService2, InitializingBea
     // Only called by the old service to work out if a rendition was created by the new service.
     public boolean isCreatedByRenditionService2(NodeRef sourceNodeRef, String renditionName)
     {
-        boolean result = false;
-        NodeRef renditionNode = getRenditionNode(sourceNodeRef, renditionName);
+        final NodeRef renditionNode = getRenditionNode(sourceNodeRef, renditionName);
         if (renditionNode != null)
         {
-            result = nodeService.hasAspect(renditionNode, RenditionModel.ASPECT_RENDITION2);
+            return nodeService.hasAspect(renditionNode, RenditionModel.ASPECT_RENDITION2);
         }
-        return result;
+        return false;
     }
 
     // Only called by the old service, so that it can take over. Normally RenditionService2 just updates
@@ -727,12 +723,10 @@ public class RenditionService2Impl implements RenditionService2, InitializingBea
     public void deleteRendition(NodeRef sourceNodeRef, String renditionName)
     {
         NodeRef renditionNode = getRenditionNode(sourceNodeRef, renditionName);
-        if (renditionNode != null)
+        if (renditionNode != null &&
+            nodeService.hasAspect(renditionNode, RenditionModel.ASPECT_RENDITION2))
         {
-            if (nodeService.hasAspect(renditionNode, RenditionModel.ASPECT_RENDITION2))
-            {
-                nodeService.deleteNode(renditionNode);
-            }
+            nodeService.deleteNode(renditionNode);
         }
     }
 

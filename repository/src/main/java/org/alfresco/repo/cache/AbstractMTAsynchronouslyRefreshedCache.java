@@ -25,21 +25,10 @@
  */
 package org.alfresco.repo.cache;
 
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-
 import org.alfresco.repo.tenant.TenantService;
-import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
-import org.alfresco.repo.transaction.TransactionListener;
 import org.alfresco.util.PropertyCheck;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.InitializingBean;
 
 /**
@@ -54,8 +43,9 @@ public abstract class AbstractMTAsynchronouslyRefreshedCache<T>
     extends org.alfresco.util.cache.AbstractAsynchronouslyRefreshedCache<T> 
 	implements AsynchronouslyRefreshedCache<T>, InitializingBean
 {
-    
-    private static Log logger = LogFactory.getLog(AbstractMTAsynchronouslyRefreshedCache.class);
+
+    private static final Log logger = LogFactory.getLog(
+        AbstractMTAsynchronouslyRefreshedCache.class);
 
     private TenantService tenantService;
 

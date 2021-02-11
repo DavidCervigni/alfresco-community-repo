@@ -334,20 +334,20 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
     @Override
     public Long getMinNodeId()
     {
-        return (Long) template.selectOne(SELECT_NODE_MIN_ID);
+        return template.selectOne(SELECT_NODE_MIN_ID);
     }
 
     @Override
     public Long getMaxNodeId()
     {
-        return (Long) template.selectOne(SELECT_NODE_MAX_ID);
+        return template.selectOne(SELECT_NODE_MAX_ID);
     }
 
     @Override
     @SuppressWarnings("rawtypes")
     public Pair<Long, Long> getNodeIdsIntervalForType(QName type, Long startTxnTime, Long endTxnTime)
     {
-        final Pair<Long, Long> intervalPair = new Pair<Long, Long>(LONG_ZERO, LONG_ZERO);
+        final Pair<Long, Long> intervalPair = new Pair<>(LONG_ZERO, LONG_ZERO);
         Pair<Long, QName> typePair = qnameDAO.getQName(type);
         if (typePair == null)
         {
@@ -359,17 +359,12 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
         txnQuery.setMinCommitTime(startTxnTime);
         txnQuery.setMaxCommitTime(endTxnTime);
         
-        ResultHandler resultHandler = new ResultHandler()
-        {
-            @SuppressWarnings("unchecked")
-            public void handleResult(ResultContext context)
+        ResultHandler resultHandler = context -> {
+            Map<Long, Long> result = (Map<Long, Long>) context.getResultObject();
+            if (result != null)
             {
-                Map<Long, Long> result = (Map<Long, Long>) context.getResultObject();
-                if (result != null)
-                {
-                    intervalPair.setFirst(result.get("minId"));
-                    intervalPair.setSecond(result.get("maxId"));
-                }
+                intervalPair.setFirst(result.get("minId"));
+                intervalPair.setSecond(result.get("maxId"));
             }
         };
         template.select(SELECT_NODE_INTERVAL_BY_TYPE, txnQuery, resultHandler);
@@ -468,7 +463,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
         // Store ID
         nodeBatchLoadEntity.setStoreId(storeId);
         // UUID
-        nodeBatchLoadEntity.setUuids(new ArrayList<String>(uuids));
+        nodeBatchLoadEntity.setUuids(new ArrayList<>(uuids));
         
         return template.selectList(SELECT_NODES_BY_UUIDS, nodeBatchLoadEntity);
     }
@@ -478,7 +473,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
     {
         NodeBatchLoadEntity nodeBatchLoadEntity = new NodeBatchLoadEntity();
         // IDs
-        nodeBatchLoadEntity.setIds(new ArrayList<Long>(ids));
+        nodeBatchLoadEntity.setIds(new ArrayList<>(ids));
         
         return template.selectList(SELECT_NODES_BY_IDS, nodeBatchLoadEntity);
     }
@@ -489,7 +484,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
      */
     private Map<NodeVersionKey, Map<NodePropertyKey, NodePropertyValue>> makePersistentPropertiesMap(List<NodePropertyEntity> rows)
     {
-        Map<NodeVersionKey, Map<NodePropertyKey, NodePropertyValue>> results = new HashMap<NodeVersionKey, Map<NodePropertyKey, NodePropertyValue>>(3);
+        Map<NodeVersionKey, Map<NodePropertyKey, NodePropertyValue>> results = new HashMap<>(3);
         for (NodePropertyEntity row : rows)
         {
             Long nodeId = row.getNodeId();
@@ -502,7 +497,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
             Map<NodePropertyKey, NodePropertyValue> props = results.get(nodeTxnKey);
             if (props == null)
             {
-                props = new HashMap<NodePropertyKey, NodePropertyValue>(17);
+                props = new HashMap<>(17);
                 results.put(nodeTxnKey, props);
             }
             props.put(row.getKey(), row.getValue());
@@ -516,7 +511,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
      */
     private List<NodePropertyEntity> makePersistentRows(Long nodeId, Map<NodePropertyKey, NodePropertyValue> map)
     {
-        List<NodePropertyEntity> rows = new ArrayList<NodePropertyEntity>(map.size());
+        List<NodePropertyEntity> rows = new ArrayList<>(map.size());
         for (Map.Entry<NodePropertyKey, NodePropertyValue> entry : map.entrySet())
         {
             NodePropertyEntity row = new NodePropertyEntity();
@@ -537,7 +532,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
             return Collections.emptyMap();
         }
         NodePropertyEntity prop = new NodePropertyEntity();
-        prop.setNodeIds(new ArrayList<Long>(nodeIds));
+        prop.setNodeIds(new ArrayList<>(nodeIds));
 
         List<NodePropertyEntity> rows = template.selectList(SELECT_NODE_PROPERTIES, prop);
         return makePersistentPropertiesMap(rows);
@@ -566,7 +561,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
             prop.getKey().setQnameId(qnameIds.iterator().next());
             break;
         default:
-            prop.setQnameIds(new ArrayList<Long>(qnameIds));
+            prop.setQnameIds(new ArrayList<>(qnameIds));
         }
 
         List<NodePropertyEntity> rows = template.selectList(SELECT_NODE_PROPERTIES, prop);
@@ -577,23 +572,17 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
     @SuppressWarnings("rawtypes")
     public List<NodePropertyEntity> selectNodePropertiesByTypes(Set<QName> qnames)
     {
-        final List<NodePropertyEntity> properties = new ArrayList<NodePropertyEntity>();
+        final List<NodePropertyEntity> properties = new ArrayList<>();
 
         // qnames of properties that are encrypted
         Set<Long> qnameIds = qnameDAO.convertQNamesToIds(qnames, false);
         if(qnameIds.size() > 0)
         {
             IdsEntity param = new IdsEntity();
-            param.setIds(new ArrayList<Long>(qnameIds));
+            param.setIds(new ArrayList<>(qnameIds));
             // TODO - use a callback approach
-            template.select(SELECT_PROPERTIES_BY_TYPES, param, new ResultHandler()
-            {
-                @Override
-                public void handleResult(ResultContext context)
-                {
-                    properties.add((NodePropertyEntity)context.getResultObject());
-                }
-            });
+            template.select(SELECT_PROPERTIES_BY_TYPES, param,
+                context -> properties.add((NodePropertyEntity)context.getResultObject()));
         }
 
         return properties;
@@ -609,16 +598,10 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
         ids.setIdOne((long)typeOrdinal);
         ids.setIdTwo(minNodeId);
         ids.setIdThree(maxNodeId);
-        final List<NodePropertyEntity> properties = new ArrayList<NodePropertyEntity>();
+        final List<NodePropertyEntity> properties = new ArrayList<>();
         
-        template.select(SELECT_PROPERTIES_BY_ACTUAL_TYPE, ids, new ResultHandler()
-        {
-            @Override
-            public void handleResult(ResultContext context)
-            {
-                properties.add((NodePropertyEntity)context.getResultObject());
-            }
-        });
+        template.select(SELECT_PROPERTIES_BY_ACTUAL_TYPE, ids,
+            context -> properties.add((NodePropertyEntity)context.getResultObject()));
         
         return properties;
     }
@@ -636,7 +619,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
             {
                 return 0;         // Nothing to do
             }
-            prop.setQnameIds(new ArrayList<Long>(qnameIds));
+            prop.setQnameIds(new ArrayList<>(qnameIds));
         }
         
         return template.delete(DELETE_NODE_PROPERTIES, prop);
@@ -706,11 +689,11 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
             return Collections.emptyMap();
         }
         NodeAspectsEntity aspects = new NodeAspectsEntity();
-        aspects.setNodeIds(new ArrayList<Long>(nodeIds));
+        aspects.setNodeIds(new ArrayList<>(nodeIds));
 
         List<NodeAspectsEntity> rows = template.selectList(SELECT_NODE_ASPECTS, aspects);
         
-        Map<NodeVersionKey, Set<QName>> results = new HashMap<NodeVersionKey, Set<QName>>(rows.size()*2);
+        Map<NodeVersionKey, Set<QName>> results = new HashMap<>(rows.size() * 2);
         for (NodeAspectsEntity nodeAspectsEntity : rows)
         {
             Long nodeId = nodeAspectsEntity.getNodeId();
@@ -720,7 +703,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
             {
                 throw new IllegalStateException("Found existing key while querying for node aspects: " + nodeIds);
             }
-            Set<Long> aspectIds = new HashSet<Long>(nodeAspectsEntity.getAspectQNameIds());
+            Set<Long> aspectIds = new HashSet<>(nodeAspectsEntity.getAspectQNameIds());
             Set<QName> aspectQNames = qnameDAO.convertIdsToQNames(aspectIds);
             results.put(nodeVersionKey, aspectQNames);
         }
@@ -730,7 +713,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
     @Override
     protected void insertNodeAspect(Long nodeId, Long qnameId)
     {
-        Map<String, Long> aspectParameters = new HashMap<String, Long>(5);
+        Map<String, Long> aspectParameters = new HashMap<>(5);
         aspectParameters.put("nodeId", nodeId);
         aspectParameters.put("qnameId", qnameId);
         template.insert(INSERT_NODE_ASPECT, aspectParameters);
@@ -743,7 +726,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
         nodeAspects.setNodeId(nodeId);
         if (qnameIds != null && !qnameIds.isEmpty())
         {
-            nodeAspects.setAspectQNameIds(new ArrayList<Long>(qnameIds));                // Null means all
+            nodeAspects.setAspectQNameIds(new ArrayList<>(qnameIds));                // Null means all
         }
         return template.delete(DELETE_NODE_ASPECTS, nodeAspects);
     }
@@ -755,14 +738,10 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
             final NodeRefQueryCallback resultsCallback)
     {
         @SuppressWarnings("rawtypes")
-        ResultHandler resultHandler = new ResultHandler()
-        {
-            public void handleResult(ResultContext context)
-            {
-                NodeEntity entity = (NodeEntity) context.getResultObject();
-                Pair<Long, NodeRef> nodePair = new Pair<Long, NodeRef>(entity.getId(), entity.getNodeRef());
-                resultsCallback.handle(nodePair);
-            }
+        ResultHandler resultHandler = context -> {
+            NodeEntity entity = (NodeEntity) context.getResultObject();
+            Pair<Long, NodeRef> nodePair = new Pair<>(entity.getId(), entity.getNodeRef());
+            resultsCallback.handle(nodePair);
         };
         
         IdsEntity parameters = new IdsEntity();
@@ -897,7 +876,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
         assoc.setTypeQNameId(assocTypeQNameId);
         
         Integer maxIndex = template.selectOne(SELECT_NODE_ASSOCS_MAX_INDEX, assoc);
-        return maxIndex == null ? 0 : maxIndex.intValue();
+        return maxIndex == null ? 0 : maxIndex;
     }
 
     @Override
@@ -1220,7 +1199,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
             resultsCallback.done();
             return;                         // Shortcut as they don't exist
         }
-        assoc.setTypeQNameIds(new ArrayList<Long>(assocTypeQNameIds));
+        assoc.setTypeQNameIds(new ArrayList<>(assocTypeQNameIds));
         // Ordered
         assoc.setOrdered(resultsCallback.orderResults());
         
@@ -1270,8 +1249,8 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
             throw new IllegalArgumentException("Unable to process more than 1000 child names in getChildAssocs");
         }
         // Work out the child names to query on
-        final Set<String> childNamesShort = new HashSet<String>(childNames.size());
-        final List<Long> childNamesCrc = new ArrayList<Long>(childNames.size());
+        final Set<String> childNamesShort = new HashSet<>(childNames.size());
+        final List<Long> childNamesCrc = new ArrayList<>(childNames.size());
         for (String childName : childNames)
         {
             String childNameLower = childName.toLowerCase();
@@ -1281,13 +1260,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
             childNamesCrc.add(childNameCrc);
         }
         // Create a filter that checks that the name CRC is present
-        ChildAssocResultHandlerFilter filter = new ChildAssocResultHandlerFilter()
-        {
-            public boolean isResult(ChildAssocEntity assoc)
-            {
-                return childNamesShort.contains(assoc.getChildNodeName());
-            }
-        };
+        ChildAssocResultHandlerFilter filter = assoc -> childNamesShort.contains(assoc.getChildNodeName());
         
         ChildAssocEntity assoc = new ChildAssocEntity();
         // Parent
@@ -1359,7 +1332,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
             resultsCallback.done();
             return;                         // Shortcut as they don't exist
         }
-        assoc.setChildNodeTypeQNameIds(new ArrayList<Long>(childNodeTypeQNameIds));
+        assoc.setChildNodeTypeQNameIds(new ArrayList<>(childNodeTypeQNameIds));
         // Ordered
         assoc.setOrdered(resultsCallback.orderResults());
         
@@ -1412,7 +1385,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
             Set<Long> childNodeTypeQNameIds = qnameDAO.convertQNamesToIds(assocTypeQNames, false);
             if (childNodeTypeQNameIds.size() > 0)
             {
-                idsEntity.setIds(new ArrayList<Long>(childNodeTypeQNameIds)); 
+                idsEntity.setIds(new ArrayList<>(childNodeTypeQNameIds));
             }
         }
         
@@ -1667,8 +1640,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
         TransactionQueryEntity txnQuery = new TransactionQueryEntity();
         txnQuery.setMinCommitTime(fromCommitTime);
         txnQuery.setMaxCommitTime(toCommitTime);
-        int numDeleted = template.delete(DELETE_TXNS_UNUSED, txnQuery);
-        return numDeleted;
+        return template.delete(DELETE_TXNS_UNUSED, txnQuery);
     }
     
     @Override
@@ -1695,7 +1667,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
         }
         TransactionQueryEntity txnQuery = new TransactionQueryEntity();
         txnQuery.setTypeQNameId(deletedTypePair.getFirst());
-        return (Long) template.selectOne(SELECT_TXN_MIN_COMMIT_TIME_FOR_NODE_TYPE, txnQuery);
+        return template.selectOne(SELECT_TXN_MIN_COMMIT_TIME_FOR_NODE_TYPE, txnQuery);
     }
     
     @Override
@@ -1722,7 +1694,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
         parentNode.setId(parentNodeId);
         ChildAssocEntity childAssoc = new ChildAssocEntity();
         childAssoc.setParentNode(parentNode);
-        childAssoc.setPrimary(Boolean.valueOf(isPrimary));
+        childAssoc.setPrimary(isPrimary);
         return template.selectOne(COUNT_CHILD_ASSOC_BY_PARENT_ID, childAssoc);
     }
     
@@ -1827,8 +1799,7 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
             TransactionQueryEntity txnQuery = new TransactionQueryEntity();
             txnQuery.setMinCommitTime(fromCommitTime);
             txnQuery.setMaxCommitTime(toCommitTime);
-            int numDeleted = template.delete(DELETE_TXNS_UNUSED_MYSQL, txnQuery);
-            return numDeleted;
+            return template.delete(DELETE_TXNS_UNUSED_MYSQL, txnQuery);
         }
     }
     
@@ -1844,7 +1815,6 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
         @Override
         protected Long newNodeImplInsert(NodeEntity node)
         {
-            Long id = null;
             try
             {
                 // We need to handle existing deleted nodes.
@@ -1866,8 +1836,8 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
                         throw new NodeExistsException(dbTargetNode.getNodePair(), null);
                     }
                 }
-                
-                id = insertNode(node);
+
+                return insertNode(node);
             }
             catch (Throwable e)
             {
@@ -1879,8 +1849,6 @@ public class NodeDAOImpl extends AbstractNodeDAOImpl
                 // There does not appear to be any row that could prevent an insert
                 throw new AlfrescoRuntimeException("Failed to insert new node: " + node, e);
             }
-            
-            return id;
         }
         
         @Override

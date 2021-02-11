@@ -25,14 +25,18 @@
  */
 package org.alfresco.repo.node.db;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import static java.lang.System.currentTimeMillis;
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
+import static java.util.stream.Collectors.toList;
 
-import org.alfresco.repo.domain.node.NodeDAO;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.stream.Stream;
+
 import org.alfresco.repo.node.cleanup.AbstractNodeCleanupWorker;
 import org.alfresco.repo.transaction.RetryingTransactionHelper;
-import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
 
 /**
  * Cleans up deleted nodes and dangling transactions that are old enough.
@@ -42,50 +46,39 @@ import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransacti
  */
 public class DeletedNodeCleanupWorker extends AbstractNodeCleanupWorker
 {
-    private long minPurgeAgeMs;
+    private long minPurgeAgeMs        = 7L * 24L * 3600L * 1000L;
     // used for tests, to consider only transactions after a certain commit time
     private long fromCustomCommitTime = -1;
-    
+
     // Unused transactions will be purged in chunks determined by commit time boundaries. 'index.tracking.purgeSize' specifies the size
     // of the chunk (in ms). Default is a couple of hours.
-    private int purgeSize = 7200000; // ms
-
-    /**
-     * Default constructor
-     */
-    public DeletedNodeCleanupWorker()
-    {
-        minPurgeAgeMs = 7L * 24L * 3600L * 1000L;
-    }
+    private int purgeSize = 2 * 60 * 60 * 1000; // 2h in ms
 
     /**
      * {@inheritDoc}
      */
-    protected List<String> doCleanInternal() throws Throwable
+    protected List<String> doCleanInternal()
     {
         if (minPurgeAgeMs < 0)
         {
-            return Collections.singletonList("Minimum purge age is negative; purge disabled");
+            return singletonList("Minimum purge age is negative; purge disabled");
         }
-        
-        List<String> purgedNodes = purgeOldDeletedNodes(minPurgeAgeMs);
-        List<String> purgedTxns = purgeOldEmptyTransactions(minPurgeAgeMs);
-        
-        List<String> allResults = new ArrayList<String>(100);
-        allResults.addAll(purgedNodes);
-        allResults.addAll(purgedTxns);
-        
-        // Done
-        return allResults;
+
+        return Stream
+            .of(
+                purgeOldDeletedNodes(minPurgeAgeMs),
+                purgeOldEmptyTransactions(minPurgeAgeMs))
+            .flatMap(Collection::stream)
+            .collect(toList());
     }
 
     /**
      * Set the minimum age (days) that nodes and transactions must be before they get purged.
      * The default is 7 days.
-     * 
-     * @param minPurgeAgeDays           the minimum age (in days) before nodes and transactions get purged
+     *
+     * @param minPurgeAgeDays the minimum age (in days) before nodes and transactions get purged
      */
-    public void setMinPurgeAgeDays(int minPurgeAgeDays)
+    public void setMinPurgeAgeDays(final int minPurgeAgeDays)
     {
         this.minPurgeAgeMs = ((long) minPurgeAgeDays) * 24L * 3600L * 1000L;
     }
@@ -96,13 +89,14 @@ public class DeletedNodeCleanupWorker extends AbstractNodeCleanupWorker
      *
      * @param fromCustomCommitTime the custom from commit time value
      */
-    public void setFromCustomCommitTime(long fromCustomCommitTime)
+    public void setFromCustomCommitTime(final long fromCustomCommitTime)
     {
         this.fromCustomCommitTime = fromCustomCommitTime;
     }
+
     /**
      * Set the purge transaction block size. This determines how many unused transactions are purged in one go.
-     * 
+     *
      * @param purgeSize int
      */
     public void setPurgeSize(int purgeSize)
@@ -118,13 +112,13 @@ public class DeletedNodeCleanupWorker extends AbstractNodeCleanupWorker
      */
     private List<String> purgeOldDeletedNodes(long minAge)
     {
-        final List<String> results = new ArrayList<String>(100);
+        final List<String> results = new ArrayList<>(100);
 
-        final long maxCommitTime = System.currentTimeMillis() - minAge;
+        final long maxCommitTime = currentTimeMillis() - minAge;
         long fromCommitTime = fromCustomCommitTime;
         if (fromCommitTime <= 0L)
         {
-            fromCommitTime = nodeDAO.getMinTxnCommitTimeForDeletedNodes().longValue();
+            fromCommitTime = nodeDAO.getMinTxnCommitTimeForDeletedNodes();
         }
         if ( fromCommitTime == 0L )
         {
@@ -132,15 +126,15 @@ public class DeletedNodeCleanupWorker extends AbstractNodeCleanupWorker
               results.add(msg);
               return results;
         }
-        
+
         long loopPurgeSize = purgeSize;
-        Long purgeCount = new Long(0);
+        long purgeCount;
         while (true)
         {
             // Ensure we keep the lock
             refreshLock();
             
-            RetryingTransactionHelper txnHelper = transactionService.getRetryingTransactionHelper();
+            final RetryingTransactionHelper txnHelper = transactionService.getRetryingTransactionHelper();
             txnHelper.setMaxRetries(5);                             // Limit number of retries
             txnHelper.setRetryWaitIncrementMs(1000);                // 1 second to allow other cleanups time to get through
 
@@ -152,17 +146,20 @@ public class DeletedNodeCleanupWorker extends AbstractNodeCleanupWorker
             
             try
             {
-                DeleteNodesByTransactionsCallback purgeNodesCallback = new DeleteNodesByTransactionsCallback(nodeDAO, fromCommitTime, toCommitTime);
-                purgeCount = txnHelper.doInTransaction(purgeNodesCallback, false, true);
+                final long start = fromCommitTime;
+                final long finish = toCommitTime;
+                purgeCount = txnHelper.doInTransaction(
+                    () -> (long) nodeDAO.purgeNodes(start, finish),
+                    false,
+                    true);
 
-                if (purgeCount.longValue() > 0)
+                if (purgeCount > 0)
                 {
-                    String msg =
+                    results.add(
                         "Purged old nodes: \n" +
                         "   From commit time (ms):    " + fromCommitTime + "\n" +
                         "   To commit time (ms):      " + toCommitTime + "\n" +
-                        "   Purge count:     " + purgeCount;
-                    results.add(msg);
+                        "   Purge count:     " + purgeCount);
                 }
 
                 fromCommitTime += loopPurgeSize;
@@ -176,7 +173,7 @@ public class DeletedNodeCleanupWorker extends AbstractNodeCleanupWorker
             }
             catch (Throwable e)
             {
-                String msg = 
+                String msg =
                     "Failed to purge nodes. \n" +
                     "  If the purgable set is too large for the available DB resources \n" +
                     "  then the nodes can be purged manually as well. \n" +
@@ -235,15 +232,15 @@ public class DeletedNodeCleanupWorker extends AbstractNodeCleanupWorker
     {
         if (minAge < 0)
         {
-            return Collections.emptyList();
+            return emptyList();
         }
-        final List<String> results = new ArrayList<String>(100);
+        final List<String> results = new ArrayList<>(100);
 
-        final long maxCommitTime = System.currentTimeMillis() - minAge;
+        final long maxCommitTime = currentTimeMillis() - minAge;
         long fromCommitTime = fromCustomCommitTime;
         if (fromCommitTime <= 0L)
         {
-            fromCommitTime = nodeDAO.getMinUnusedTxnCommitTime().longValue();
+            fromCommitTime = nodeDAO.getMinUnusedTxnCommitTime();
         }
     	// delete unused transactions in batches of size 'purgeTxnBlockSize'
         while (true)
@@ -263,22 +260,24 @@ public class DeletedNodeCleanupWorker extends AbstractNodeCleanupWorker
 
             // Purge transactions
             try
-            {               
-                DeleteTransactionsCallback purgeTxnsCallback = new DeleteTransactionsCallback(nodeDAO, fromCommitTime, toCommitTime);
-                long purgeCount = txnHelper.doInTransaction(purgeTxnsCallback, false, true);
+            {
+                final long start = fromCommitTime;
+                final long finish = toCommitTime;
+                long purgeCount = txnHelper.doInTransaction(
+                    () -> (long) nodeDAO.deleteTxnsUnused(start, finish),
+                    false,
+                    true);
                 if (purgeCount > 0)
                 {
-                    String msg =
-                        "Purged old txns: \n" +
-                        "   From commit time (ms):    " + fromCommitTime + "\n" +
-                        "   To commit time (ms):      " + toCommitTime + "\n" +
-                        "   Purge count:     " + purgeCount;
-                    results.add(msg);
+                    results.add("Purged old txns: \n" +
+                                "   From commit time (ms):    " + fromCommitTime + "\n" +
+                                "   To commit time (ms):      " + toCommitTime + "\n" +
+                                "   Purge count:     " + purgeCount);
                 }
             }
             catch (Throwable e)
             {
-                String msg = 
+                final String msg =
                     "Failed to purge txns." +
                     "  Set log level to WARN for this class to get exception log: \n" +
                     "   From commit time:      " + fromCommitTime + "\n" +
@@ -305,55 +304,5 @@ public class DeletedNodeCleanupWorker extends AbstractNodeCleanupWorker
         }
         // Done
         return results;
-    }
-    
-    private static abstract class DeleteByTransactionsCallback implements RetryingTransactionCallback<Long>
-    {
-        protected NodeDAO nodeDAO;
-        protected long fromCommitTime;
-        protected long toCommitTime;
-
-        DeleteByTransactionsCallback(NodeDAO nodeDAO, long fromCommitTime, long toCommitTime)
-        {
-            this.nodeDAO = nodeDAO;
-            this.fromCommitTime = fromCommitTime;
-            this.toCommitTime = toCommitTime;
-        }
-
-        public abstract Long execute() throws Throwable;
-    }
-    
-    /*
-     * Delete a block of unused transactions
-     */
-    private static class DeleteTransactionsCallback extends DeleteByTransactionsCallback
-    {
-        DeleteTransactionsCallback(NodeDAO nodeDAO, long fromCommitTime, long toCommitTime)
-        {
-            super(nodeDAO, fromCommitTime, toCommitTime);
-        }
-
-        public Long execute() throws Throwable
-        {
-            long count = nodeDAO.deleteTxnsUnused(fromCommitTime, toCommitTime);
-            return count;
-        }       
-    }
-    
-    /*
-     * Purge a block of deleted nodes and their properties
-     */
-    private static class DeleteNodesByTransactionsCallback extends DeleteByTransactionsCallback
-    {
-        DeleteNodesByTransactionsCallback(NodeDAO nodeDAO, long fromCommitTime, long toCommitTime)
-        {
-            super(nodeDAO, fromCommitTime, toCommitTime);
-        }
-
-        public Long execute() throws Throwable
-        {
-            long count = nodeDAO.purgeNodes(fromCommitTime, toCommitTime);
-            return count;
-        }       
     }
 }

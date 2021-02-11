@@ -36,7 +36,7 @@ import java.util.Queue;
 import org.alfresco.error.AlfrescoRuntimeException;
 import org.alfresco.repo.policy.Policy.Arg;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
-import org.alfresco.repo.transaction.TransactionListener;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.util.GUID;
 
 
@@ -68,7 +68,7 @@ public class TransactionBehaviourQueue implements TransactionListener
     public <P extends Policy> void queue(Behaviour behaviour, PolicyDefinition<P> definition, P policyInterface, Method method, Object[] args)
     {
         // Construct queue context, if required
-        QueueContext queueContext = (QueueContext)AlfrescoTransactionSupport.getResource(QUEUE_CONTEXT_KEY);
+        QueueContext queueContext = AlfrescoTransactionSupport.getResource(QUEUE_CONTEXT_KEY);
         if (queueContext == null)
         {
             queueContext = new QueueContext();
@@ -120,21 +120,13 @@ public class TransactionBehaviourQueue implements TransactionListener
         }
     }
     
-
-    /* (non-Javadoc)
-     * @see org.alfresco.repo.transaction.TransactionListener#flush()
-     */
-    public void flush()
-    {
-    }
-
     /* (non-Javadoc)
      * @see org.alfresco.repo.transaction.TransactionListener#beforeCommit(boolean)
      */
     @SuppressWarnings("unchecked")
     public void beforeCommit(boolean readOnly)
     {
-        QueueContext queueContext = (QueueContext)AlfrescoTransactionSupport.getResource(QUEUE_CONTEXT_KEY);
+        QueueContext queueContext = AlfrescoTransactionSupport.getResource(QUEUE_CONTEXT_KEY);
         ExecutionContext context = queueContext.queue.poll();
         while (context != null)
         {
@@ -144,27 +136,6 @@ public class TransactionBehaviourQueue implements TransactionListener
         queueContext.committed = true;
     }
 
-    /* (non-Javadoc)
-     * @see org.alfresco.repo.transaction.TransactionListener#beforeCompletion()
-     */
-    public void beforeCompletion()
-    {
-    }
-
-    /* (non-Javadoc)
-     * @see org.alfresco.repo.transaction.TransactionListener#afterCommit()
-     */
-    public void afterCommit()
-    {
-    }
-
-    /* (non-Javadoc)
-     * @see org.alfresco.repo.transaction.TransactionListener#afterRollback()
-     */
-    public void afterRollback()
-    {
-    }
-    
     /**
      * Execution Instance Key - to uniquely identify an ExecutionContext
      */
@@ -184,7 +155,7 @@ public class TransactionBehaviourQueue implements TransactionListener
         }
         
         Behaviour behaviour;
-        ArrayList<Object> keys = new ArrayList<Object>();
+        ArrayList<Object> keys = new ArrayList<>();
         
         /**
          * @see java.lang.Object#hashCode()
@@ -249,11 +220,7 @@ public class TransactionBehaviourQueue implements TransactionListener
         {
             context.method.invoke(context.policyInterface, context.args);
         }
-        catch (IllegalArgumentException e)
-        {
-            throw new AlfrescoRuntimeException("Failed to execute transaction-level behaviour " + context.method + " in transaction " + AlfrescoTransactionSupport.getTransactionId(), e);
-        }
-        catch (IllegalAccessException e)
+        catch (IllegalArgumentException | IllegalAccessException e)
         {
             throw new AlfrescoRuntimeException("Failed to execute transaction-level behaviour " + context.method + " in transaction " + AlfrescoTransactionSupport.getTransactionId(), e);
         }
@@ -312,8 +279,8 @@ public class TransactionBehaviourQueue implements TransactionListener
     private class QueueContext
     {
         // TODO: Tune sizes
-        Queue<ExecutionContext> queue = new LinkedList<ExecutionContext>();
-        Map<ExecutionInstanceKey, ExecutionContext> index = new HashMap<ExecutionInstanceKey, ExecutionContext>();
+        Queue<ExecutionContext> queue = new LinkedList<>();
+        Map<ExecutionInstanceKey, ExecutionContext> index = new HashMap<>();
         boolean committed = false;
     }
         

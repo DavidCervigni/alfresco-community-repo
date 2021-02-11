@@ -38,6 +38,7 @@ import org.alfresco.service.transaction.TransactionService;
 import org.alfresco.util.BaseSpringTest;
 import org.junit.Before;
 import org.junit.Test;
+import org.alfresco.util.transaction.TransactionListener;
 
 /**
  * Tests integration between our <tt>UserTransaction</tt> implementation and
@@ -125,16 +126,11 @@ public class AlfrescoTransactionSupportTest extends BaseSpringTest
     @Test
     public void testListener() throws Exception
     {
-        final List<String> strings = new ArrayList<String>(1);
+        final List<String> strings = new ArrayList<>(1);
 
         // anonymous inner class to test it
         TransactionListener listener = new TransactionListener()
         {
-            @Override
-            public void flush()
-            {
-                strings.add("flush");
-            }
             @Override
             public void beforeCommit(boolean readOnly)
             {
@@ -228,12 +224,12 @@ public class AlfrescoTransactionSupportTest extends BaseSpringTest
         final String afterCommitOuter = "afterCommit = outer";
 
         // the listeners will play with this
-        final List<String> testList = new ArrayList<String>(1);
+        final List<String> testList = new ArrayList<>(1);
         testList.add(beforeCommit);
         testList.add(afterCommitInner);
         testList.add(afterCommitOuter);
 
-        final TransactionListener listener = new TransactionListenerAdapter()
+        final TransactionListener listener = new TransactionListener()
         {
             @Override
             public int hashCode()
@@ -245,7 +241,7 @@ public class AlfrescoTransactionSupportTest extends BaseSpringTest
             public void beforeCommit(boolean readOnly)
             {
                 testList.remove(beforeCommit);
-                TransactionListener postCommitListener = new TransactionListenerAdapter()
+                TransactionListener postCommitListener = new TransactionListener()
                 {
                     @Override
                     public void afterCommit()
@@ -262,7 +258,7 @@ public class AlfrescoTransactionSupportTest extends BaseSpringTest
                 testList.remove(afterCommitOuter);
             }
         };
-        final TransactionListener dummyListener = new TransactionListenerAdapter()
+        final TransactionListener dummyListener = new TransactionListener()
         {
             @Override
             public int hashCode()
@@ -272,15 +268,11 @@ public class AlfrescoTransactionSupportTest extends BaseSpringTest
             }
         };
         // start a transaction
-        RetryingTransactionCallback<Object> bindWork = new RetryingTransactionCallback<Object>()
-        {
-            public Object execute() throws Exception
-            {
-                // just bind the listener to the transaction
-                AlfrescoTransactionSupport.bindListener(dummyListener);
-                AlfrescoTransactionSupport.bindListener(listener);
-                return null;
-            }
+        RetryingTransactionCallback<Object> bindWork = () -> {
+            // just bind the listener to the transaction
+            AlfrescoTransactionSupport.bindListener(dummyListener);
+            AlfrescoTransactionSupport.bindListener(listener);
+            return null;
         };
         // kick it all off
         transactionService.getRetryingTransactionHelper().doInTransaction(bindWork);
@@ -293,7 +285,7 @@ public class AlfrescoTransactionSupportTest extends BaseSpringTest
     public void testReadWriteStateRetrieval() throws Exception
     {
         final TxnReadState[] postCommitReadState = new TxnReadState[1];
-        final TransactionListenerAdapter getReadStatePostCommit = new TransactionListenerAdapter()
+        final TransactionListener getReadStatePostCommit = new TransactionListener()
         {
             @Override
             public void afterCommit()
@@ -308,15 +300,11 @@ public class AlfrescoTransactionSupportTest extends BaseSpringTest
             }
         };
 
-        RetryingTransactionCallback<TxnReadState> getReadStateWork = new RetryingTransactionCallback<TxnReadState>()
-        {
-            public TxnReadState execute() throws Exception
-            {
-                // Register to list to post-commit
-                AlfrescoTransactionSupport.bindListener(getReadStatePostCommit);
+        RetryingTransactionCallback<TxnReadState> getReadStateWork = () -> {
+            // Register to list to post-commit
+            AlfrescoTransactionSupport.bindListener(getReadStatePostCommit);
 
-                return AlfrescoTransactionSupport.getTransactionReadState();
-            }
+            return AlfrescoTransactionSupport.getTransactionReadState();
         };
 
         // Check TXN_NONE
@@ -348,36 +336,44 @@ public class AlfrescoTransactionSupportTest extends BaseSpringTest
     }
 
     @Test
-    public void testResourceHelper() throws Exception
+    public void testResourceHelper()
     {
         // start a transaction
-        RetryingTransactionCallback<Object> testWork = new RetryingTransactionCallback<Object>()
-        {
-            public Object execute() throws Exception
-            {
-                // Check map access
-                Map<String, String> map = TransactionalResourceHelper.getMap("abc");
-                assertNotNull("Map not created", map);
-                map.put("1", "ONE");
-                Map<String, String> mapCheck = TransactionalResourceHelper.getMap("abc");
-                assertTrue("Same map not retrieved", map == mapCheck);
-                // Check counter
-                assertEquals("Transactional count incorrect. ", 0, TransactionalResourceHelper.getCount("myCount"));
-                assertEquals("Transactional count incorrect. ", -1, TransactionalResourceHelper.decrementCount("myCount", true));
-                assertEquals("Transactional count incorrect. ", -2, TransactionalResourceHelper.decrementCount("myCount", true));
-                assertEquals("Transactional count incorrect. ", -2, TransactionalResourceHelper.getCount("myCount"));
-                assertEquals("Transactional count incorrect. ", -1, TransactionalResourceHelper.incrementCount("myCount"));
-                assertEquals("Transactional count incorrect. ", 0, TransactionalResourceHelper.incrementCount("myCount"));
-                assertEquals("Transactional count incorrect. ", 1, TransactionalResourceHelper.incrementCount("myCount"));
-                assertEquals("Transactional count incorrect. ", 1, TransactionalResourceHelper.getCount("myCount"));
-                assertEquals("Transactional count incorrect. ", 1, TransactionalResourceHelper.getCount("myCount"));
-                TransactionalResourceHelper.resetCount("myCount");
-                assertEquals("Transactional count incorrect. ", 0, TransactionalResourceHelper.getCount("myCount"));
-                assertEquals("Transactional count incorrect. ", 0, TransactionalResourceHelper.decrementCount("myCount", false));
-                assertEquals("Transactional count incorrect. ", 0, TransactionalResourceHelper.decrementCount("myCount", false));
-                // Done
-                return null;
-            }
+        RetryingTransactionCallback<Object> testWork = () -> {
+            // Check map access
+            Map<String, String> map = TransactionalResourceHelper.getMap("abc");
+            assertNotNull("Map not created", map);
+            map.put("1", "ONE");
+            Map<String, String> mapCheck = TransactionalResourceHelper.getMap("abc");
+            assertTrue("Same map not retrieved", map == mapCheck);
+            // Check counter
+            assertEquals("Transactional count incorrect. ", 0,
+                TransactionalResourceHelper.getCount("myCount"));
+            assertEquals("Transactional count incorrect. ", -1,
+                TransactionalResourceHelper.decrementCount("myCount", true));
+            assertEquals("Transactional count incorrect. ", -2,
+                TransactionalResourceHelper.decrementCount("myCount", true));
+            assertEquals("Transactional count incorrect. ", -2,
+                TransactionalResourceHelper.getCount("myCount"));
+            assertEquals("Transactional count incorrect. ", -1,
+                TransactionalResourceHelper.incrementCount("myCount"));
+            assertEquals("Transactional count incorrect. ", 0,
+                TransactionalResourceHelper.incrementCount("myCount"));
+            assertEquals("Transactional count incorrect. ", 1,
+                TransactionalResourceHelper.incrementCount("myCount"));
+            assertEquals("Transactional count incorrect. ", 1,
+                TransactionalResourceHelper.getCount("myCount"));
+            assertEquals("Transactional count incorrect. ", 1,
+                TransactionalResourceHelper.getCount("myCount"));
+            TransactionalResourceHelper.resetCount("myCount");
+            assertEquals("Transactional count incorrect. ", 0,
+                TransactionalResourceHelper.getCount("myCount"));
+            assertEquals("Transactional count incorrect. ", 0,
+                TransactionalResourceHelper.decrementCount("myCount", false));
+            assertEquals("Transactional count incorrect. ", 0,
+                TransactionalResourceHelper.decrementCount("myCount", false));
+            // Done
+            return null;
         };
         // kick it all off
         transactionService.getRetryingTransactionHelper().doInTransaction(testWork);

@@ -52,7 +52,7 @@ import org.alfresco.repo.security.permissions.impl.AclChange;
 import org.alfresco.repo.security.permissions.impl.SimplePermissionReference;
 import org.alfresco.repo.tenant.TenantService;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.service.cmr.repository.NodeRef;
 import org.alfresco.service.cmr.security.AccessStatus;
 import org.alfresco.service.cmr.security.AuthorityType;
@@ -1645,7 +1645,7 @@ public class AclDAOImpl implements AclDAO
      * @author Derek Hulley
      * @since 4.0
      */
-    private class UpdateChangeSetListener extends TransactionListenerAdapter
+    private class UpdateChangeSetListener implements TransactionListener
     {
         @Override
         public void beforeCommit(boolean readOnly)

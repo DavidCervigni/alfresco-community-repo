@@ -54,7 +54,7 @@ import org.alfresco.service.namespace.NamespaceService;
 import org.alfresco.service.namespace.QName;
 import org.alfresco.service.transaction.TransactionService;
 import org.alfresco.util.PropertyCheck;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -66,12 +66,12 @@ import org.apache.commons.logging.LogFactory;
  * 
  * @author gkspencer
  */
-public class NodeMonitor extends TransactionListenerAdapter 
-						 implements  NodeServicePolicies.OnCreateNodePolicy,
-									 NodeServicePolicies.OnUpdatePropertiesPolicy,
-									 NodeServicePolicies.BeforeDeleteNodePolicy,
-									 NodeServicePolicies.OnMoveNodePolicy,
-									 Runnable
+public class NodeMonitor implements TransactionListener,
+						            NodeServicePolicies.OnCreateNodePolicy,
+									NodeServicePolicies.OnUpdatePropertiesPolicy,
+									NodeServicePolicies.BeforeDeleteNodePolicy,
+									NodeServicePolicies.OnMoveNodePolicy,
+									Runnable
 {
     // Logging
     
@@ -84,16 +84,16 @@ public class NodeMonitor extends TransactionListenerAdapter
     
     // Services/components
 	
-	private PolicyComponent m_policyComponent;
-	private NodeService m_nodeService;
-	private FileFolderService m_fileFolderService;
-	private PermissionService m_permissionService;
-	private TransactionService m_transService;
+	private final PolicyComponent    m_policyComponent;
+	private final NodeService        m_nodeService;
+	private final FileFolderService  m_fileFolderService;
+	private final PermissionService  m_permissionService;
+	private final TransactionService m_transService;
 	
 	// Filesystem driver and context
 
 	// TODO needs to be configured with many filesystem contexts.
-	private ContentContext m_filesysCtx;
+	private final ContentContext m_filesysCtx;
 	
 	// File state table 
 	private FileStateCache m_stateTable;
@@ -230,7 +230,7 @@ public class NodeMonitor extends TransactionListenerAdapter
     	// Check if the node is a file/folder
     	
     	NodeRef nodeRef = childAssocRef.getChildRef();
-    	if ( nodeRef.getStoreRef().equals( m_storeRef) == false)
+    	if (!nodeRef.getStoreRef().equals(m_storeRef))
     	{
     	    // different store so irrelevant
     		return;
@@ -268,7 +268,7 @@ public class NodeMonitor extends TransactionListenerAdapter
     	
     	// Check that the node is in our store
     	
-    	if ( nodeRef.getStoreRef().equals( m_storeRef) == false)
+    	if (!nodeRef.getStoreRef().equals(m_storeRef))
     	{
     		return;
     	}
@@ -320,7 +320,7 @@ public class NodeMonitor extends TransactionListenerAdapter
     	// Check if the node is a file/folder, and for our store
     	
     	NodeRef oldNodeRef = oldChildAssocRef.getChildRef();
-    	if ( oldNodeRef.getStoreRef().equals( m_storeRef) == false)
+    	if (!oldNodeRef.getStoreRef().equals(m_storeRef))
     	{
     		return;
     	}
@@ -367,7 +367,7 @@ public class NodeMonitor extends TransactionListenerAdapter
 
 		// Check if the node is in the filesystem store
 		
-    	if ( nodeRef.getStoreRef().equals( m_storeRef) == false)
+    	if (!nodeRef.getStoreRef().equals(m_storeRef))
     		return;
     	
     	// Check if the node is a file/folder
@@ -477,7 +477,7 @@ public class NodeMonitor extends TransactionListenerAdapter
 			{
 				m_thread.interrupt();
 			}
-			catch ( Exception ex) 
+			catch ( Exception ignored)
 			{
 			}
 		}
@@ -512,7 +512,7 @@ public class NodeMonitor extends TransactionListenerAdapter
 
 		// Loop until shutdown
 		
-		while ( m_shutdown == false)
+		while (!m_shutdown)
 		{
 			try
 			{
@@ -527,7 +527,7 @@ public class NodeMonitor extends TransactionListenerAdapter
                 
                 // Check for a shutdown
                 
-                if ( m_shutdown == true)
+                if (m_shutdown)
                     continue;
                 
                 RetryingTransactionCallback<Object> processEventCallback = new RetryingTransactionCallback<Object>()
@@ -576,7 +576,7 @@ public class NodeMonitor extends TransactionListenerAdapter
                 
                 m_transService.getRetryingTransactionHelper().doInTransaction(processEventCallback, true, true);
 			}
-			catch ( InterruptedException ex)
+			catch ( InterruptedException ignored)
 			{
 			}
 			catch (Throwable e)
@@ -591,7 +591,7 @@ public class NodeMonitor extends TransactionListenerAdapter
 	 * 
 	 * @param createEvent CreateNodeEvent
 	 */
-	private final void processCreateNode(CreateNodeEvent createEvent) {
+	private void processCreateNode(CreateNodeEvent createEvent) {
 	    
 		// Get the full path to the file/folder node
 	    String relPath = createEvent.getRelPath();
@@ -607,13 +607,8 @@ public class NodeMonitor extends TransactionListenerAdapter
 				logger.debug("CreateNode nodeRef=" + createEvent.getNodeRef() + ", fName=" + name + ", path=" + relPath);
 			
 			// Build the full file path
-			
-			StringBuilder fullPath = new StringBuilder();
-			fullPath.append( relPath.substring( m_rootPath.length()));
-			fullPath.append( "/");
-			fullPath.append( name);
-			
-			relPath = fullPath.toString();
+
+			relPath = relPath.substring(m_rootPath.length()) + "/" + name;
 			
 			// Update an existing file state to indicate that the file exists, may have been marked as deleted
 			
@@ -622,7 +617,7 @@ public class NodeMonitor extends TransactionListenerAdapter
 				// Check if there is file state for this file
 				
 				FileState fState = m_stateTable.findFileState( relPath);
-				if ( fState != null && fState.exists() == false) {
+				if ( fState != null && !fState.exists()) {
 
 					// Check if the new node is a file or folder
 					
@@ -675,7 +670,7 @@ public class NodeMonitor extends TransactionListenerAdapter
 	 * 
 	 * @param deleteEvent DeleteNodeEvent
 	 */
-	private final void processDeleteNode(DeleteNodeEvent deleteEvent) {
+	private void processDeleteNode(DeleteNodeEvent deleteEvent) {
 
 		// Check if the delete was confirmed
 		
@@ -705,7 +700,7 @@ public class NodeMonitor extends TransactionListenerAdapter
 			// Check if there is file state for this file
 			
 			FileState fState = m_stateTable.findFileState( relPath);
-			if ( fState != null && fState.exists() == true) {
+			if ( fState != null && fState.exists()) {
 
 				// Mark the file/folder as no longer existing
 				
@@ -750,7 +745,7 @@ public class NodeMonitor extends TransactionListenerAdapter
 	 * 
 	 * @param moveEvent MoveNodeEvent
 	 */
-	private final void processMoveNode(MoveNodeEvent moveEvent) {
+	private void processMoveNode(MoveNodeEvent moveEvent) {
 
 		// Strip the root path
 		
@@ -769,7 +764,7 @@ public class NodeMonitor extends TransactionListenerAdapter
 			// Check if there is file state for the orginal file/folder
 			
 			FileState fState = m_stateTable.findFileState( fromPath);
-			if ( fState != null && fState.exists() == true) {
+			if ( fState != null && fState.exists()) {
 
 				// Mark the file/folder as no longer existing
 				
@@ -784,7 +779,7 @@ public class NodeMonitor extends TransactionListenerAdapter
 			// Check if there is a file state for the destination file/folder
 			
 			fState = m_stateTable.findFileState( toPath);
-			if ( fState != null && fState.exists() == false) {
+			if ( fState != null && !fState.exists()) {
 				
 				// Indicate the the file or folder exists
 				
@@ -825,7 +820,7 @@ public class NodeMonitor extends TransactionListenerAdapter
 	 * 
 	 * @param lockEvent LockNodeEvent
 	 */
-	private final void processLockNode(LockNodeEvent lockEvent) {
+	private void processLockNode(LockNodeEvent lockEvent) {
 		
 		// Get the full path to the file/folder node
 	    
@@ -844,13 +839,9 @@ public class NodeMonitor extends TransactionListenerAdapter
 			}
 				
 			// Build the full file path
-			
-			StringBuilder fullPath = new StringBuilder();
-			fullPath.append( relPath.substring( m_rootPath.length()));
-			fullPath.append( "/");
-			fullPath.append( name);
-			
-			relPath = fullPath.toString().replace( '/', '\\');
+
+			final String fullPath = relPath.substring(m_rootPath.length()) + "/" + name;
+			relPath = fullPath.replace( '/', '\\');
 			
 			// Node has been locked or unlocked, send a change notification to indicate the file attributes have changed
 
@@ -858,7 +849,8 @@ public class NodeMonitor extends TransactionListenerAdapter
 				
 				// Send out a change of attributes notification
 				
-			    m_filesysCtx.getChangeHandler().notifyAttributesChanged( relPath, lockEvent.getFileType() == FileFolderServiceType.FILE ? false : true);
+			    m_filesysCtx.getChangeHandler().notifyAttributesChanged( relPath,
+					lockEvent.getFileType() != FileFolderServiceType.FILE);
 
 				// DEBUG
 				

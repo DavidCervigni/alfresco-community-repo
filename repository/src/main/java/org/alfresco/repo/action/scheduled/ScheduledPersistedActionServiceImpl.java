@@ -56,7 +56,7 @@ import org.alfresco.service.namespace.NamespaceService;
 import org.alfresco.service.namespace.QName;
 import org.alfresco.service.transaction.TransactionService;
 import org.alfresco.util.GUID;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.quartz.Job;
@@ -436,7 +436,7 @@ public class ScheduledPersistedActionServiceImpl implements ScheduledPersistedAc
 
         // As soon as the transaction commits, add it
         AlfrescoTransactionSupport.bindListener(
-           new TransactionListenerAdapter() {
+           new TransactionListener() {
                @Override
                public void afterCommit() {
                   // Schedule it with Quartz

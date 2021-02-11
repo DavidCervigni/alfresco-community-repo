@@ -48,7 +48,7 @@ import org.alfresco.repo.tenant.TenantUtil;
 import org.alfresco.repo.tenant.TenantUtil.TenantRunAsWork;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.repo.version.Version2Model;
 import org.alfresco.service.cmr.dictionary.InvalidTypeException;
 import org.alfresco.service.cmr.dictionary.ModelDefinition;
@@ -296,7 +296,7 @@ public class DictionaryModelType implements ContentServicePolicies.OnContentUpda
     @SuppressWarnings("unchecked")
     private void queueModel(NodeRef nodeRef)
     {
-        Set<NodeRef> pendingModels = (Set<NodeRef>)AlfrescoTransactionSupport.getResource(KEY_PENDING_MODELS);
+        Set<NodeRef> pendingModels = AlfrescoTransactionSupport.getResource(KEY_PENDING_MODELS);
         if (pendingModels == null)
         {
             //pendingModels = Collections.newSetFromMap(new ConcurrentHashMap()); // Java 6
@@ -371,7 +371,7 @@ public class DictionaryModelType implements ContentServicePolicies.OnContentUpda
     public void beforeDeleteNode(NodeRef nodeRef)
     {
         boolean workingCopy = nodeService.hasAspect(nodeRef, ContentModel.ASPECT_WORKING_COPY);
-        NodeRef wcNodeRef = (NodeRef)AlfrescoTransactionSupport.getResource(KEY_WORKING_COPY);
+        NodeRef wcNodeRef = AlfrescoTransactionSupport.getResource(KEY_WORKING_COPY);
         if ((wcNodeRef != null) && (wcNodeRef.equals(nodeRef)))
         {
             workingCopy = true;
@@ -397,7 +397,7 @@ public class DictionaryModelType implements ContentServicePolicies.OnContentUpda
                     throw AlfrescoRuntimeException.create(MODEL_IN_USE, modelName);
                 }
 
-                Set<NodeRef> pendingModelDeletes = (Set<NodeRef>)AlfrescoTransactionSupport.getResource(KEY_PENDING_DELETE_MODELS);
+                Set<NodeRef> pendingModelDeletes = AlfrescoTransactionSupport.getResource(KEY_PENDING_DELETE_MODELS);
                 if (pendingModelDeletes == null)
                 {
                     //pendingModelDeletes = Collections.newSetFromMap(new ConcurrentHashMap()); // Java 6
@@ -480,7 +480,7 @@ public class DictionaryModelType implements ContentServicePolicies.OnContentUpda
     /**
      * Dictionary model type transaction listener class.
      */
-    public class DictionaryModelTypeTransactionListener extends TransactionListenerAdapter
+    public class DictionaryModelTypeTransactionListener implements TransactionListener
     {
         /**
          * Id used in equals and hash
@@ -500,8 +500,8 @@ public class DictionaryModelType implements ContentServicePolicies.OnContentUpda
         @Override
         public void afterCommit()
         {
-            Set<NodeRef> pendingModels = (Set<NodeRef>)AlfrescoTransactionSupport.getResource(KEY_PENDING_MODELS);
-            Set<NodeRef> pendingDeleteModels = (Set<NodeRef>)AlfrescoTransactionSupport.getResource(KEY_PENDING_DELETE_MODELS);
+            Set<NodeRef> pendingModels = AlfrescoTransactionSupport.getResource(KEY_PENDING_MODELS);
+            Set<NodeRef> pendingDeleteModels = AlfrescoTransactionSupport.getResource(KEY_PENDING_DELETE_MODELS);
             
             if (logger.isTraceEnabled())
             {
@@ -567,7 +567,7 @@ public class DictionaryModelType implements ContentServicePolicies.OnContentUpda
         }
         
         /**
-         * @see org.alfresco.repo.transaction.TransactionListener#beforeCommit(boolean)
+         * @see org.alfresco.util.transaction.TransactionListener#beforeCommit(boolean)
          */
         @SuppressWarnings("unchecked")
         @Override
@@ -595,7 +595,7 @@ public class DictionaryModelType implements ContentServicePolicies.OnContentUpda
                 }
             }
             
-            Set<NodeRef> pendingModels = (Set<NodeRef>)AlfrescoTransactionSupport.getResource(KEY_PENDING_MODELS);
+            Set<NodeRef> pendingModels = AlfrescoTransactionSupport.getResource(KEY_PENDING_MODELS);
             
             if (pendingModels != null)
             {

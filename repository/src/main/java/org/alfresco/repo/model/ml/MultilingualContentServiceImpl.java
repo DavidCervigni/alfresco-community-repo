@@ -39,7 +39,7 @@ import org.alfresco.repo.node.MLPropertyInterceptor;
 import org.alfresco.repo.policy.BehaviourFilter;
 import org.alfresco.repo.security.authentication.AuthenticationUtil;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.repo.transaction.TransactionalResourceHelper;
 import org.alfresco.service.cmr.ml.ContentFilterLanguagesService;
 import org.alfresco.service.cmr.ml.MultilingualContentService;
@@ -969,7 +969,7 @@ public class MultilingualContentServiceImpl implements MultilingualContentServic
      * @author Derek Hulley
      * @since 4.1.1
      */
-    private class MLContainerCleaner extends TransactionListenerAdapter
+    private class MLContainerCleaner implements TransactionListener
     {
         @Override
         public void beforeCommit(boolean readOnly)

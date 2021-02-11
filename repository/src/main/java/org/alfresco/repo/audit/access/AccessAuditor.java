@@ -51,8 +51,7 @@ import org.alfresco.repo.policy.JavaBehaviour;
 import org.alfresco.repo.policy.PolicyComponent;
 import org.alfresco.repo.policy.PolicyScope;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
-import org.alfresco.repo.transaction.TransactionListener;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.repo.transaction.TransactionalResourceHelper;
 import org.alfresco.repo.version.VersionServicePolicies.OnCreateVersionPolicy;
 import org.alfresco.service.cmr.repository.ChildAssociationRef;
@@ -184,7 +183,7 @@ public class AccessAuditor implements InitializingBean,
         OnCheckOut, OnCheckIn, OnCancelCheckOut
 {
     /** Logger */
-    private static Log logger = LogFactory.getLog(AccessAuditor.class);
+    private static final Log logger = LogFactory.getLog(AccessAuditor.class);
     
     private static final String ROOT_PATH = "/alfresco-access";
     private static final String TRANSACTION = "transaction";
@@ -197,8 +196,8 @@ public class AccessAuditor implements InitializingBean,
     private NodeInfoFactory nodeInfoFactory;
     private NamespaceService namespaceService;
 
-    private TransactionListener transactionListener = new AccessTransactionListener();
-    private boolean auditSubActions = false;
+    private final TransactionListener transactionListener = new AccessTransactionListener();
+    private       boolean             auditSubActions     = false;
 
     /**
      * Set the properties object holding filter configuration
@@ -579,7 +578,7 @@ public class AccessAuditor implements InitializingBean,
     /**
      * Listen for commit to audit gathered audit activity for the current user transaction.
      */
-    private class AccessTransactionListener extends TransactionListenerAdapter
+    private class AccessTransactionListener implements TransactionListener
     {
         @Override
         public void afterCommit()

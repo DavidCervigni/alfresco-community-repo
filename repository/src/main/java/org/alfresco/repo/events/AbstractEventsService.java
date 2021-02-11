@@ -39,6 +39,7 @@ import java.util.Set;
 
 import javax.servlet.http.HttpServletRequest;
 
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.sync.events.EventRegistry;
 import org.alfresco.sync.events.types.Event;
 import org.alfresco.sync.events.types.TransactionCommittedEvent;
@@ -53,7 +54,6 @@ import org.alfresco.repo.security.authentication.AuthenticationUtil.RunAsWork;
 import org.alfresco.repo.tenant.TenantUtil;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
 import org.alfresco.service.cmr.coci.CheckOutCheckInService;
 import org.alfresco.service.cmr.dictionary.DictionaryService;
 import org.alfresco.service.cmr.dictionary.TypeDefinition;
@@ -85,9 +85,9 @@ import com.google.common.collect.Sets;
  * @author steveglover
  *
  */
-public abstract class AbstractEventsService extends TransactionListenerAdapter
+public abstract class AbstractEventsService implements TransactionListener
 {
-    private static Log logger = LogFactory.getLog(AbstractEventsService.class);
+    private static final Log logger = LogFactory.getLog(AbstractEventsService.class);
 
     private static final String EVENTS_KEY = "camel.events";
     protected static final String TRANSACTION_HAS_EVENTS = "transaction.has.events";
@@ -106,7 +106,7 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
     protected TransactionService transactionService;
 
     protected Set<String> includeEventTypes;
-    protected Set<QName> matchingTypes = new HashSet<QName>();
+    protected Set<QName> matchingTypes = new HashSet<>();
 
     protected boolean sendEventsBeforeCommit = true;
 
@@ -182,8 +182,7 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
     protected long nextSequenceNumber()
     {
         TxnEvents events = getTxnEvents();
-        long seqNumber = events.nextSeqNumber();
-        return seqNumber;
+        return events.nextSeqNumber();
     }
 
     @Override
@@ -192,7 +191,7 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
         if(sendEventsBeforeCommit)
         {
             // send all events
-            final TxnEvents transactionEvents = (TxnEvents)AlfrescoTransactionSupport.getResource(EVENTS_KEY);
+            final TxnEvents transactionEvents = AlfrescoTransactionSupport.getResource(EVENTS_KEY);
             if(transactionEvents != null)
             {
                 List<Event> filteredEvents = filterEventsBeforeSend(transactionEvents.getEvents());
@@ -223,7 +222,7 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
             HttpServletRequest request = (HttpServletRequest)context.get(CallContext.HTTP_SERVLET_REQUEST);
             if(request != null)
             {
-                String alfrescoClientId = (String)request.getHeader("alfrescoClientId");
+                String alfrescoClientId = request.getHeader("alfrescoClientId");
                 return new Client(Client.ClientType.cmis, alfrescoClientId);
             }
         }
@@ -271,7 +270,7 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
         else
         {
             // send all events
-            final TxnEvents transactionEvents = (TxnEvents)AlfrescoTransactionSupport.getResource(EVENTS_KEY);
+            final TxnEvents transactionEvents = AlfrescoTransactionSupport.getResource(EVENTS_KEY);
             if(transactionEvents != null)
             {
                 List<Event> filteredEvents = filterEventsBeforeSend(transactionEvents.getEvents());
@@ -351,7 +350,7 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
         }
         finally
         {
-            TxnEvents events = (TxnEvents)AlfrescoTransactionSupport.getResource(EVENTS_KEY);
+            TxnEvents events = AlfrescoTransactionSupport.getResource(EVENTS_KEY);
             if(events != null)
             {
                 events.clear();
@@ -502,8 +501,7 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
 
         public String getNodeId()
         {
-            String nodeId = nodeRef.getId();
-            return nodeId;
+            return nodeRef.getId();
         }
 
         public Status getStatus()
@@ -652,19 +650,17 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
     protected List<String> getPaths(List<Path> nodePaths, List<String> toAppend)
     {
         // TODO use fileFolderService.getNamePath instead?
-        List<String> stringPaths = new ArrayList<String>(nodePaths.size());
+        List<String> stringPaths = new ArrayList<>(nodePaths.size());
         for(final Path path : nodePaths)
         {
             // run as system because the events system is a system service
-            String displayPath = AuthenticationUtil.runAsSystem(new RunAsWork<String>()
+            String displayPath = AuthenticationUtil.runAsSystem(new RunAsWork<>()
             {
                 @Override
                 public String doWork() throws Exception
                 {
-                    String displayPath = path.toDisplayPath(nodeService, permissionService);
-                    return displayPath;
+                    return path.toDisplayPath(nodeService, permissionService);
                 }
-                
             });
 
             StringBuilder pathStr = new StringBuilder(displayPath);
@@ -692,10 +688,10 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
     protected List<List<String>> getNodeIdsFromParent(List<Path> nodePaths)
     {
         // TODO use fileFolderService.getNamePath instead?
-        List<List<String>> pathNodeIds = new ArrayList<List<String>>(nodePaths.size());
+        List<List<String>> pathNodeIds = new ArrayList<>(nodePaths.size());
         for(Path path : nodePaths)
         {
-            List<String> nodeIds = new ArrayList<String>(path.size());
+            List<String> nodeIds = new ArrayList<>(path.size());
 
             // don't include the leaf node id
             // add in reverse order (so the first element is the immediate parent)
@@ -725,10 +721,10 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
     protected List<List<String>> getNodeIds(List<Path> nodePaths)
     {
         // TODO use fileFolderService.getNamePath instead?
-        List<List<String>> pathNodeIds = new ArrayList<List<String>>(nodePaths.size());
+        List<List<String>> pathNodeIds = new ArrayList<>(nodePaths.size());
         for(Path path : nodePaths)
         {
-            List<String> nodeIds = new ArrayList<String>(path.size());
+            List<String> nodeIds = new ArrayList<>(path.size());
 
             // don't include the leaf node id
             // add in reverse order (so the first element is the immediate parent)
@@ -808,7 +804,7 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
 
     protected TxnEvents getTxnEvents()
     {
-        TxnEvents events = (TxnEvents)AlfrescoTransactionSupport.getResource(EVENTS_KEY);
+        TxnEvents events = AlfrescoTransactionSupport.getResource(EVENTS_KEY);
         if(events == null)
         {
             events = new TxnEvents();
@@ -846,23 +842,26 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
 
     protected NodeInfo getNodeInfo(final NodeRef nodeRef, final String eventType)
     {
-        NodeInfo nodeInfo = AuthenticationUtil.runAsSystem(new RunAsWork<NodeInfo>()
+
+        return AuthenticationUtil.runAsSystem(new RunAsWork<>()
         {
             public NodeInfo doWork() throws Exception
             {
-                NodeInfo nodeInfo = null;
+                NodeInfo nodeInfo1 = null;
 
                 String txnId = AlfrescoTransactionSupport.getTransactionId();
 
-                if(!includeEventType(eventType))
+                if (!includeEventType(eventType))
                 {
-                    nodeInfo = new NodeInfo(eventType, null, null, nodeRef, null, null, null, null, null, null, null, null,
-                            false, null, null);
+                    nodeInfo1 = new NodeInfo(eventType, null, null, nodeRef, null, null, null, null,
+                        null, null, null, null,
+                        false, null, null);
                 }
-                else if(nodeRef == null || !nodeService.exists(nodeRef))
+                else if (nodeRef == null || !nodeService.exists(nodeRef))
                 {
-                    nodeInfo = new NodeInfo(eventType, txnId, null, nodeRef, null, null, null, null, null, null, null, false,
-                            true, false, null);
+                    nodeInfo1 = new NodeInfo(eventType, txnId, null, nodeRef, null, null, null,
+                        null, null, null, null, false,
+                        true, false, null);
                 }
                 else
                 {
@@ -870,15 +869,17 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
                     Visibility visibility = hiddenAspect.getVisibility(filterclient, nodeRef);
                     QName type = nodeService.getType(nodeRef);
 
-                    if(!typeMatches(type))
+                    if (!typeMatches(type))
                     {
-                        nodeInfo = new NodeInfo(eventType, txnId, null, nodeRef, null, null, null, null, null, null,
-                                null, true, true, false, false);
+                        nodeInfo1 = new NodeInfo(eventType, txnId, null, nodeRef, null, null, null,
+                            null, null, null,
+                            null, true, true, false, false);
                     }
-                    else if(!visibility.equals(Visibility.Visible))
+                    else if (!visibility.equals(Visibility.Visible))
                     {
-                        nodeInfo = new NodeInfo(eventType, txnId, null, nodeRef, null, null, null, null, null, null,
-                                null, true, true, true, true);
+                        nodeInfo1 = new NodeInfo(eventType, txnId, null, nodeRef, null, null, null,
+                            null, null, null,
+                            null, true, true, true, true);
                     }
                     else
                     {
@@ -887,23 +888,25 @@ public abstract class AbstractEventsService extends TransactionListenerAdapter
 
                         Set<QName> aspects = nodeService.getAspects(nodeRef);
 
-                        final String name = (String)nodeService.getProperty(nodeRef, ContentModel.PROP_NAME);
-                        List<Path> nodePaths = Collections.singletonList(nodeService.getPath(nodeRef));
+                        final String name = (String) nodeService.getProperty(nodeRef,
+                            ContentModel.PROP_NAME);
+                        List<Path> nodePaths = Collections.singletonList(
+                            nodeService.getPath(nodeRef));
 
-                        Date modifiedTime = (Date)nodeService.getProperty(nodeRef, ContentModel.PROP_MODIFIED);
-                        Long modificationTimestamp = ( modifiedTime != null ? modifiedTime.getTime() : null);
+                        Date modifiedTime = (Date) nodeService.getProperty(nodeRef,
+                            ContentModel.PROP_MODIFIED);
+                        Long modificationTimestamp = (modifiedTime != null ? modifiedTime.getTime() : null);
 
                         Status status = nodeService.getNodeStatus(nodeRef);
                         Client client = ClientUtil.from(filterclient);
-                        nodeInfo = new NodeInfo(eventType, txnId, name, nodeRef, status, nodePaths, modificationTimestamp,
-                                type, aspects, siteId, client, true, true, true, true);
+                        nodeInfo1 = new NodeInfo(eventType, txnId, name, nodeRef, status, nodePaths,
+                            modificationTimestamp,
+                            type, aspects, siteId, client, true, true, true, true);
                     }
                 }
 
-                return nodeInfo;
+                return nodeInfo1;
             }
         });
-
-        return nodeInfo;
     }
 }

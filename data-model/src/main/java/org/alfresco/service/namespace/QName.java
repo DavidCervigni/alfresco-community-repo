@@ -25,6 +25,8 @@
  */
 package org.alfresco.service.namespace;
 
+import static org.alfresco.service.namespace.NamespaceService.CONTENT_MODEL_1_0_URI;
+
 import java.io.Serializable;
 import java.util.Collection;
 
@@ -153,7 +155,7 @@ public final class QName implements QNamePattern, Serializable, Cloneable, Compa
         }
 
         String namespaceURI = null;
-        String localName = null;
+        String localName;
 
         // Parse namespace
         int namespaceBegin = qname.indexOf(NAMESPACE_BEGIN);
@@ -174,7 +176,7 @@ public final class QName implements QNamePattern, Serializable, Cloneable, Compa
 
         // Parse name
         localName = qname.substring(namespaceEnd + 1);
-        if (localName == null || localName.length() == 0)
+        if (localName.length() == 0)
         {
             throw new InvalidQNameException("QName '" + qname + "' must consist of a local name");
         }
@@ -201,7 +203,7 @@ public final class QName implements QNamePattern, Serializable, Cloneable, Compa
      * @param name  name to create valid local name from
      * @return valid local name
      */
-    public static String createValidLocalName(String name)
+    public static String createValidLocalName(final String name)
     {
         // Validate length
         if (name == null || name.length() == 0)
@@ -210,7 +212,7 @@ public final class QName implements QNamePattern, Serializable, Cloneable, Compa
         }
         if (name.length() > MAX_LENGTH)
         {
-            name = name.substring(0, MAX_LENGTH);
+            return name.substring(0, MAX_LENGTH);
         }
 
         return name;
@@ -222,8 +224,7 @@ public final class QName implements QNamePattern, Serializable, Cloneable, Compa
      * @param qname  qualified name of the following format <code>prefix:localName</code>
      * @return  string array where index 0 => prefix and index 1 => local name
      */
-    public static String[] splitPrefixedQName(String qname)
-        throws InvalidQNameException, NamespaceException
+    public static String[] splitPrefixedQName(final String qname) throws NamespaceException
     {
         if (qname != null)
         {
@@ -287,12 +288,12 @@ public final class QName implements QNamePattern, Serializable, Cloneable, Compa
      */
     public QName getPrefixedQName(NamespacePrefixResolver resolver)
     {
-        Collection<String> prefixes = resolver.getPrefixes(namespaceURI);
+        final Collection<String> prefixes = resolver.getPrefixes(namespaceURI);
         if (prefixes.size() == 0)
         {
             throw new NamespaceException("A namespace prefix is not registered for uri " + namespaceURI);
         }
-        String resolvedPrefix = prefixes.iterator().next();
+        final String resolvedPrefix = prefixes.iterator().next();
         if (prefix != null && prefix.equals(resolvedPrefix))
         {
             return this;
@@ -359,10 +360,10 @@ public final class QName implements QNamePattern, Serializable, Cloneable, Compa
     @Override
     public String toString()
     {
-        return new StringBuilder(80).append(NAMESPACE_BEGIN)
-                                    .append(namespaceURI)
-                                    .append(NAMESPACE_END)
-                                    .append(localName).toString();
+        return NAMESPACE_BEGIN +
+               namespaceURI +
+               NAMESPACE_END +
+               localName;
     }
 
     /**
@@ -418,20 +419,17 @@ public final class QName implements QNamePattern, Serializable, Cloneable, Compa
      */
     public String toPrefixString(NamespacePrefixResolver prefixResolver)
     {
-        Collection<String> prefixes = prefixResolver.getPrefixes(namespaceURI);
+        final Collection<String> prefixes = prefixResolver.getPrefixes(namespaceURI);
         if (prefixes.size() == 0)
         {
             throw new NamespaceException("A namespace prefix is not registered for uri " + namespaceURI);
         }
-        String pref = prefixes.iterator().next();
+        final String pref = prefixes.iterator().next();
         if (pref.equals(NamespaceService.DEFAULT_PREFIX))
         {
             return localName;
         }
-        else
-        {
-            return pref + NAMESPACE_PREFIX + localName;
-        }
+        return pref + NAMESPACE_PREFIX + localName;
     }
 
 
@@ -444,8 +442,6 @@ public final class QName implements QNamePattern, Serializable, Cloneable, Compa
      */
     public static QName resolveToQName(NamespacePrefixResolver prefixResolver, String str)
     {
-        QName qname = null;
-
         if (str == null || str.length() == 0)
         {
             throw new IllegalArgumentException("str parameter is mandatory");
@@ -454,29 +450,27 @@ public final class QName implements QNamePattern, Serializable, Cloneable, Compa
         if (str.charAt(0) == (NAMESPACE_BEGIN))
         {
             // create QName directly
-            qname = createQName(str);
+            return createQName(str);
         }
-        else if (str.indexOf(NAMESPACE_PREFIX) != -1)
+
+        if (str.indexOf(NAMESPACE_PREFIX) != -1)
         {
             // extract the prefix and try and resolve using the
             // namespace service
-            int end = str.indexOf(NAMESPACE_PREFIX);
-            String prefix = str.substring(0, end);
-            String localName = str.substring(end + 1);
-            String uri = prefixResolver.getNamespaceURI(prefix);
+            final int end = str.indexOf(NAMESPACE_PREFIX);
+            final String prefix = str.substring(0, end);
+            final String localName = str.substring(end + 1);
+            final String uri = prefixResolver.getNamespaceURI(prefix);
 
-            if (uri != null)
+            if (uri == null)
             {
-                qname = createQName(uri, localName);
+                return null;
             }
-        }
-        else
-        {
-            // there's no namespace so prefix with Alfresco's Content Model
-            qname = createQName(NamespaceService.CONTENT_MODEL_1_0_URI, str);
+            return createQName(uri, localName);
         }
 
-        return qname;
+        // there's no namespace so prefix with Alfresco's Content Model
+        return createQName(CONTENT_MODEL_1_0_URI, str);
     }
 
 
@@ -490,39 +484,32 @@ public final class QName implements QNamePattern, Serializable, Cloneable, Compa
      * 
      * @return A QName String representation of the given string
      */
-    public static String resolveToQNameString(NamespacePrefixResolver prefixResolver, String str)
+    public static String resolveToQNameString(final NamespacePrefixResolver prefixResolver, final String str)
     {
-        String result = str;
-
         if (str == null || str.length() == 0)
         {
             throw new IllegalArgumentException("str parameter is mandatory");
         }
 
-        if (str.charAt(0) != NAMESPACE_BEGIN)
+        if (str.charAt(0) == NAMESPACE_BEGIN)
         {
-            if (str.indexOf(NAMESPACE_PREFIX) != -1)
-            {
-                // get the prefix and resolve to the uri
-                int end = str.indexOf(NAMESPACE_PREFIX);
-                String prefix = str.substring(0, end);
-                String localName = str.substring(end + 1);
-                String uri = prefixResolver.getNamespaceURI(prefix);
-    
-                if (uri != null)
-                {
-                    result = new StringBuilder(64).append(NAMESPACE_BEGIN).append(uri).append(NAMESPACE_END)
-                                                  .append(localName).toString();
-                }
-            }
-            else
-            {
-                // there's no namespace so prefix with Alfresco's Content Model
-                result = new StringBuilder(64).append(NAMESPACE_BEGIN).append(NamespaceService.CONTENT_MODEL_1_0_URI)
-                                              .append(NAMESPACE_END).append(str).toString();
-            }
+            return str;
         }
-        
-        return result;
+        if (str.indexOf(NAMESPACE_PREFIX) != -1)
+        {
+            // get the prefix and resolve to the uri
+            final int end = str.indexOf(NAMESPACE_PREFIX);
+            final String prefix = str.substring(0, end);
+            final String localName = str.substring(end + 1);
+            final String uri = prefixResolver.getNamespaceURI(prefix);
+
+            if (uri != null)
+            {
+                return NAMESPACE_BEGIN + uri + NAMESPACE_END + localName;
+            }
+            return str;
+        }
+        // there's no namespace so prefix with Alfresco's Content Model
+        return NAMESPACE_BEGIN + CONTENT_MODEL_1_0_URI + NAMESPACE_END + str;
     }
 }

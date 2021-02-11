@@ -39,7 +39,7 @@ import org.alfresco.repo.content.MimetypeMap;
 import org.alfresco.repo.security.authentication.AuthenticationUtil;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.service.ServiceRegistry;
 import org.alfresco.service.cmr.repository.ChildAssociationRef;
 import org.alfresco.service.cmr.repository.ContentService;
@@ -67,7 +67,7 @@ import org.springframework.context.ApplicationContext;
 @Category({OwnJVMTestsCategory.class, LuceneTests.class})
 public class AbstractTenantRoutingContentStoreTest extends TestCase
 {
-    private static ApplicationContext ctx = ApplicationContextHelper.getApplicationContext();
+    private static final ApplicationContext ctx = ApplicationContextHelper.getApplicationContext();
 
     private ContentService contentService;
     private ServiceRegistry serviceRegistry;
@@ -175,7 +175,7 @@ public class AbstractTenantRoutingContentStoreTest extends TestCase
         return content;
     }
 
-    private class TestAfterRollbackTxnListener extends TransactionListenerAdapter
+    private class TestAfterRollbackTxnListener implements TransactionListener
     {
         @Override
         public void afterRollback()

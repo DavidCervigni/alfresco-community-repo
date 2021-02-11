@@ -25,11 +25,11 @@
  */
 package org.alfresco.repo.transfer;
 
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.service.cmr.transfer.TransferProgress;
 import org.alfresco.service.cmr.transfer.TransferReceiver;
 
-public class TransferCommitTransactionListener extends TransactionListenerAdapter
+public class TransferCommitTransactionListener implements TransactionListener
 {
     private TransferReceiver receiver;
     private String transferId;

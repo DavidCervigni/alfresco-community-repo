@@ -39,7 +39,7 @@ import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport.TxnReadState;
 import org.alfresco.repo.transaction.RetryingTransactionHelper;
 import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.service.ServiceRegistry;
 import org.alfresco.service.transaction.TransactionService;
 import org.alfresco.test_category.OwnJVMTestsCategory;
@@ -249,11 +249,13 @@ public class CacheTest extends TestCase
             assertTrue("Transactionally added item not found in keys", transactionalKeys.contains(UPDATE_TXN_THREE));
             
             // Register a post-commit cache reader to make sure that nothing blows up if the cache is hit in post-commit
-            PostCommitCacheReader listenerReader = new PostCommitCacheReader(transactionalCache, UPDATE_TXN_THREE);
+            PostCommitCacheReader listenerReader = new PostCommitCacheReader(transactionalCache,
+                UPDATE_TXN_THREE);
             AlfrescoTransactionSupport.bindListener(listenerReader);
             
             // Register a post-commit cache reader to make sure that nothing blows up if the cache is hit in post-commit
-            PostCommitCacheWriter listenerWriter = new PostCommitCacheWriter(transactionalCache, UPDATE_TXN_FOUR, "FOUR");
+            PostCommitCacheWriter listenerWriter = new PostCommitCacheWriter(transactionalCache,
+                UPDATE_TXN_FOUR, "FOUR");
             AlfrescoTransactionSupport.bindListener(listenerWriter);
             
             // commit the transaction
@@ -295,7 +297,7 @@ public class CacheTest extends TestCase
      * @author Derek Hulley
      * @since 2.1
      */
-    private class PostCommitCacheReader extends TransactionListenerAdapter
+    private static class PostCommitCacheReader implements TransactionListener
     {
         private final SimpleCache<String, Object> transactionalCache;
         private final String key;
@@ -315,7 +317,6 @@ public class CacheTest extends TestCase
             catch (Throwable e)
             {
                 this.e = e;
-                return;
             }
         }
     }
@@ -327,7 +328,7 @@ public class CacheTest extends TestCase
      * @author Derek Hulley
      * @since 2.1
      */
-    private class PostCommitCacheWriter extends TransactionListenerAdapter
+    private static class PostCommitCacheWriter implements TransactionListener
     {
         private final SimpleCache<String, Object> transactionalCache;
         private final String key;
@@ -351,7 +352,6 @@ public class CacheTest extends TestCase
             catch (Throwable e)
             {
                 this.e = e;
-                return;
             }
         }
     }
@@ -416,21 +416,16 @@ public class CacheTest extends TestCase
         // preload
         for (int i = 0; i < objectCount; i++)
         {
-            String key = Integer.toString(i);
-            Integer value = new Integer(i);
-            cache.put(key, value);
+            cache.put(Integer.toString(i), i);
         }
         
         // start timer
         long start = System.nanoTime();
         for (int i = 0; i < objectCount; i++)
         {
-            String key = Integer.toString(i);
-            cache.remove(key);
+            cache.remove(Integer.toString(i));
             // add a new value
-            key = Integer.toString(i + objectCount);
-            Integer value = new Integer(i + objectCount);
-            cache.put(key, value);
+            cache.put(Integer.toString(i + objectCount), i + objectCount);
         }
         // stop
         long stop = System.nanoTime();
@@ -446,7 +441,7 @@ public class CacheTest extends TestCase
     {
         for (int i = 0; i < 6; i++)
         {
-            int count = (int) Math.pow(10D, (double)i);
+            int count = (int) Math.pow(10D, i);
             
             // test standalone
             long timePlain = runPerformanceTestOnCache(objectCache, count);
@@ -550,7 +545,7 @@ public class CacheTest extends TestCase
         }
         catch (Throwable e)
         {
-            try {txn.rollback();} catch (Throwable ee) {}
+            try {txn.rollback();} catch (Throwable ignored) {}
             throw e;
         }
     }
@@ -567,7 +562,7 @@ public class CacheTest extends TestCase
         {
             txn.begin();
             
-            Object startValue = new Integer(-1);
+            Object startValue = -1;
             String startKey = startValue.toString();
             transactionalCache.put(startKey, startValue);
             
@@ -575,9 +570,7 @@ public class CacheTest extends TestCase
             
             for (int i = 0; i < 205000; i++)
             {
-                Object value = Integer.valueOf(i);
-                String key = value.toString();
-                transactionalCache.put(key, value);
+                transactionalCache.put(String.valueOf(i), i);
             }
             
             // Is the start value here?
@@ -589,7 +582,7 @@ public class CacheTest extends TestCase
         }
         finally
         {
-            try { txn.rollback(); } catch (Throwable ee) {}
+            try { txn.rollback(); } catch (Throwable ignored) {}
         }
     }
     
@@ -616,7 +609,7 @@ public class CacheTest extends TestCase
         }
         finally
         {
-            try { txn.rollback(); } catch (Throwable ee) {}
+            try { txn.rollback(); } catch (Throwable ignored) {}
         }
         Object actualValue = TransactionalCache.getSharedCacheValue(backingCache, key, null);
         assertEquals("Backing cache value was not correct", expectedValue, actualValue);
@@ -698,7 +691,7 @@ public class CacheTest extends TestCase
         }
         finally
         {
-            try { txn.rollback(); } catch (Throwable ee) {}
+            try { txn.rollback(); } catch (Throwable ignored) {}
         }
     }
     

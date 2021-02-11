@@ -56,7 +56,6 @@ import org.alfresco.service.namespace.NamespaceService;
 import org.alfresco.service.namespace.QName;
 import org.alfresco.service.namespace.RegexQNamePattern;
 import org.alfresco.util.PropertyCheck;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -66,8 +65,8 @@ import org.apache.commons.logging.LogFactory;
  * @author Derek Hulley
  */
 public class IncompleteNodeTagger
-        extends     TransactionListenerAdapter
-        implements  NodeServicePolicies.OnCreateNodePolicy,
+        implements  org.alfresco.util.transaction.TransactionListener,
+                    NodeServicePolicies.OnCreateNodePolicy,
                     NodeServicePolicies.OnUpdatePropertiesPolicy,
                     NodeServicePolicies.OnAddAspectPolicy,
                     NodeServicePolicies.OnRemoveAspectPolicy,

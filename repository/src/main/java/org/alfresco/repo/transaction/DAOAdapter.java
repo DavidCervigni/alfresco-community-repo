@@ -25,6 +25,8 @@
  */
 package org.alfresco.repo.transaction;
 
+import org.alfresco.util.transaction.TransactionListener;
+
 /* package scope */ class DAOAdapter implements TransactionListener
 {
 	protected TransactionalDao daoService;
@@ -35,35 +37,11 @@ package org.alfresco.repo.transaction;
 	}
 
 	@Override
-    public void flush()
-    {
-      // NO-OP  
-    }
-
-	@Override
     public void beforeCommit(boolean readOnly)
     {
 		daoService.beforeCommit(readOnly);
     }
 
-	@Override
-    public void beforeCompletion()
-    {
-       // NO-OP
-    }
-
-	@Override
-    public void afterCommit()
-    {
-		// NO-OP
-    }
-
-	@Override
-    public void afterRollback()
-    {
-		// NO-OP
-    }
-	
 	public TransactionalDao getService()
 	{
 		return daoService;

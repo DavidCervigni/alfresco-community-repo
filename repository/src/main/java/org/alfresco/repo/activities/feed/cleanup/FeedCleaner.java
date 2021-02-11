@@ -48,7 +48,6 @@ import org.alfresco.repo.site.SiteModel;
 import org.alfresco.repo.tenant.TenantService;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.RetryingTransactionHelper;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
 import org.alfresco.repo.transaction.TransactionalResourceHelper;
 import org.alfresco.service.cmr.repository.NodeRef;
 import org.alfresco.service.cmr.repository.NodeService;
@@ -56,6 +55,7 @@ import org.alfresco.service.namespace.NamespaceService;
 import org.alfresco.service.namespace.QName;
 import org.alfresco.service.transaction.TransactionService;
 import org.alfresco.util.PropertyCheck;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.quartz.JobExecutionException;
@@ -464,7 +464,7 @@ public class FeedCleaner implements NodeServicePolicies.BeforeDeleteNodePolicy
     {
         String siteId = (String)nodeService.getProperty(siteNodeRef, ContentModel.PROP_NAME);
         
-        Set<String> deletedSiteIds = (Set<String>)AlfrescoTransactionSupport.getResource(KEY_DELETED_SITE_IDS);
+        Set<String> deletedSiteIds = AlfrescoTransactionSupport.getResource(KEY_DELETED_SITE_IDS);
         if (deletedSiteIds == null)
         {
             deletedSiteIds = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>()); // Java 6
@@ -476,81 +476,69 @@ public class FeedCleaner implements NodeServicePolicies.BeforeDeleteNodePolicy
         AlfrescoTransactionSupport.bindListener(deleteSiteTransactionListener);
     }
     
-    class FeedCleanerDeleteSiteTransactionListener extends TransactionListenerAdapter
+    class FeedCleanerDeleteSiteTransactionListener implements TransactionListener
     {
         @Override
         public void afterCommit()
         {
             Set<String> deletedSiteIds = TransactionalResourceHelper.getSet(KEY_DELETED_SITE_IDS);
-            if (deletedSiteIds != null)
+            for (final String siteId : deletedSiteIds)
             {
-                for (final String siteId : deletedSiteIds)
-                {
-                    transactionService.getRetryingTransactionHelper().doInTransaction(new RetryingTransactionHelper.RetryingTransactionCallback<Void>()
-                    {
-                        public Void execute() throws Throwable
+                transactionService.getRetryingTransactionHelper().doInTransaction(
+                    (RetryingTransactionHelper.RetryingTransactionCallback<Void>) () -> {
+                        try
                         {
-                            try
+                            // Since we are in post-commit, we do best-effort
+                            int deletedCnt = feedDAO.deleteSiteFeedEntries(tenantService.getName(siteId));
+
+                            if (logger.isDebugEnabled())
                             {
-                                // Since we are in post-commit, we do best-effort
-                                int deletedCnt = feedDAO.deleteSiteFeedEntries(tenantService.getName(siteId));
-                                
-                                if (logger.isDebugEnabled())
-                                {
-                                    logger.debug("afterCommit: deleted "+deletedCnt+" site feed entries for site '"+siteId+"'");
-                                }
+                                logger.debug("afterCommit: deleted "+deletedCnt+" site feed entries for site '"+siteId+"'");
                             }
-                            catch (SQLException e)
-                            {
-                                logger.error("Activities feed cleanup for site '"+siteId+"' failed: ", e);
-                            }
-                            return null;
                         }
+                        catch (SQLException e)
+                        {
+                            logger.error("Activities feed cleanup for site '"+siteId+"' failed: ", e);
+                        }
+                        return null;
                     }, false, true);
-                }
             }
         }
     }
     
-    class FeedCleanerDeletePersonTransactionListener extends TransactionListenerAdapter
+    class FeedCleanerDeletePersonTransactionListener implements TransactionListener
     {
         @Override
         public void afterCommit()
         {
             Set<String> deletedUserIds = TransactionalResourceHelper.getSet(KEY_DELETED_USER_IDS);
-            if (deletedUserIds != null)
+            for (String user : deletedUserIds)
             {
-                for (String user : deletedUserIds)
+                //MNT-9104 If username contains uppercase letters the action of joining a site will not be displayed in "My activities"
+                final String userId;
+                if (! userNamesAreCaseSensitive)
                 {
-                    //MNT-9104 If username contains uppercase letters the action of joining a site will not be displayed in "My activities" 
-                    final String userId;
-                    if (! userNamesAreCaseSensitive)
-                    {
-                        userId = user.toLowerCase();
-                    }
-                    else
-                    {
-                        userId = user;
-                    }
-                    
-                    transactionService.getRetryingTransactionHelper().doInTransaction(new RetryingTransactionHelper.RetryingTransactionCallback<Void>()
-                    {
-                        public Void execute() throws Throwable
-                        {
-                            try
-                            {
-                                // Since we are in post-commit, we do best-effort
-                                feedDAO.deleteUserFeedEntries(userId);
-                            }
-                            catch (SQLException e)
-                            {
-                                logger.error("Activities feed cleanup for user '"+userId+"' failed: ", e);
-                            }
-                            
-                            return null;
-                        }
-                    }, false, true);
+                    userId = user.toLowerCase();
                 }
+                else
+                {
+                    userId = user;
+                }
+
+                transactionService.getRetryingTransactionHelper().doInTransaction(
+                    (RetryingTransactionHelper.RetryingTransactionCallback<Void>) () -> {
+                        try
+                        {
+                            // Since we are in post-commit, we do best-effort
+                            feedDAO.deleteUserFeedEntries(userId);
+                        }
+                        catch (SQLException e)
+                        {
+                            logger.error("Activities feed cleanup for user '"+userId+"' failed: ", e);
+                        }
+
+                        return null;
+                    }, false, true);
             }
         }
     }

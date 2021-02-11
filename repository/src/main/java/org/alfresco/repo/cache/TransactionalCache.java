@@ -39,7 +39,7 @@ import org.alfresco.repo.tenant.TenantService;
 import org.alfresco.repo.tenant.TenantUtil;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport.TxnReadState;
-import org.alfresco.repo.transaction.TransactionListener;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.util.EqualsHelper;
 import org.alfresco.util.PropertyCheck;
 import org.apache.commons.logging.Log;
@@ -933,20 +933,6 @@ public class TransactionalCache<K extends Serializable, V extends Object>
             // clear shared cache
             sharedCache.clear();
         }
-    }
-
-    /**
-     * NO-OP
-     */
-    public void flush()
-    {
-    }
-
-    /**
-     * NO-OP
-     */
-    public void beforeCompletion()
-    {
     }
 
     /**

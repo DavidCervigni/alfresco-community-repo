@@ -80,7 +80,7 @@ import org.alfresco.repo.site.SiteDoesNotExistException;
 import org.alfresco.repo.site.SiteModel;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.service.ServiceRegistry;
 import org.alfresco.service.cmr.lock.NodeLockedException;
 import org.alfresco.service.cmr.model.FileExistsException;
@@ -1959,7 +1959,7 @@ public class ImapServiceImpl implements ImapService, OnRestoreNodePolicy, OnCrea
         }
     }
 
-    private class UidValidityTransactionListener extends TransactionListenerAdapter
+    private class UidValidityTransactionListener implements TransactionListener
     {
         // Generate a unique token for each folder change with which we can validate session caches
         private String changeToken = GUID.generate();
@@ -2002,42 +2002,37 @@ public class ImapServiceImpl implements ImapService, OnRestoreNodePolicy, OnCrea
                 return;
             }
 
-            doAsSystem(new RunAsWork<Void>()
-            {
-                @Override
-                public Void doWork() throws Exception
+            doAsSystem((RunAsWork<Void>) () -> {
+                // This fires at the end of the transaction, so double-check that the node is still present
+                if (!nodeService.exists(folderNodeRef))
                 {
-                    // This fires at the end of the transaction, so double-check that the node is still present
-                    if (!nodeService.exists(folderNodeRef))
-                    {
-                        return null;
-                    }
-                    
-                    if (UidValidityTransactionListener.this.forceNewUidValidity || UidValidityTransactionListener.this.minUid != null)
-                    {
-                        long modifDate = System.currentTimeMillis();
-                        Long oldMax = (Long) nodeService.getProperty(folderNodeRef, ImapModel.PROP_MAXUID);
-                        // Only update UIDVALIDITY if a new node has and ID that is smaller or equals the old maximum (as UIDs are always meant to increase)
-                        if (UidValidityTransactionListener.this.forceNewUidValidity || oldMax == null || UidValidityTransactionListener.this.minUid <= oldMax)
-                        {
-                            nodeService.setProperty(folderNodeRef, ImapModel.PROP_UIDVALIDITY, modifDate);                            
-                            if (logger.isDebugEnabled())
-                            {
-                                logger.debug("UIDVALIDITY was modified for folder, nodeRef:" + folderNodeRef);
-                            }
-                        }
-                        if(UidValidityTransactionListener.this.maxUid != null)
-                        {
-                            nodeService.setProperty(folderNodeRef, ImapModel.PROP_MAXUID, UidValidityTransactionListener.this.maxUid);
-                            if (logger.isDebugEnabled())
-                            {
-                                logger.debug("MAXUID was modified for folder, nodeRef:" + folderNodeRef);
-                            }
-                        }
-                    }
-                    nodeService.setProperty(folderNodeRef, ImapModel.PROP_CHANGE_TOKEN, changeToken);                            
                     return null;
-                }                        
+                }
+
+                if (UidValidityTransactionListener.this.forceNewUidValidity || UidValidityTransactionListener.this.minUid != null)
+                {
+                    long modifDate = System.currentTimeMillis();
+                    Long oldMax = (Long) nodeService.getProperty(folderNodeRef, ImapModel.PROP_MAXUID);
+                    // Only update UIDVALIDITY if a new node has and ID that is smaller or equals the old maximum (as UIDs are always meant to increase)
+                    if (UidValidityTransactionListener.this.forceNewUidValidity || oldMax == null || UidValidityTransactionListener.this.minUid <= oldMax)
+                    {
+                        nodeService.setProperty(folderNodeRef, ImapModel.PROP_UIDVALIDITY, modifDate);
+                        if (logger.isDebugEnabled())
+                        {
+                            logger.debug("UIDVALIDITY was modified for folder, nodeRef:" + folderNodeRef);
+                        }
+                    }
+                    if(UidValidityTransactionListener.this.maxUid != null)
+                    {
+                        nodeService.setProperty(folderNodeRef, ImapModel.PROP_MAXUID, UidValidityTransactionListener.this.maxUid);
+                        if (logger.isDebugEnabled())
+                        {
+                            logger.debug("MAXUID was modified for folder, nodeRef:" + folderNodeRef);
+                        }
+                    }
+                }
+                nodeService.setProperty(folderNodeRef, ImapModel.PROP_CHANGE_TOKEN, changeToken);
+                return null;
             });
         }
     }

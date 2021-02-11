@@ -33,7 +33,7 @@ import java.util.Map;
 import org.alfresco.repo.dictionary.DictionaryRepositoryBootstrappedEvent;
 import org.alfresco.repo.domain.schema.SchemaAvailableEvent;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
-import org.alfresco.repo.transaction.TransactionListener;
+import org.alfresco.util.transaction.TransactionListener;
 import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationListener;
 
@@ -192,7 +192,7 @@ public class DefaultPropertyBackedBeanRegistry implements PropertyBackedBeanRegi
         {
             this.isSchemaAvailable = true;
 
-            if (wasDictionaryBootstrapped && isSchemaAvailable)
+            if (wasDictionaryBootstrapped)
             {
             // Broadcast all the events we had been deferring until this event
             for (PropertyBackedBeanEvent event1 : this.deferredEvents)
@@ -208,7 +208,7 @@ public class DefaultPropertyBackedBeanRegistry implements PropertyBackedBeanRegi
         {
             this.wasDictionaryBootstrapped = true;
             
-            if (wasDictionaryBootstrapped && isSchemaAvailable)
+            if (isSchemaAvailable)
             {
                 // Broadcast all the events we had been deferring until this event
                 for (PropertyBackedBeanEvent event1 : this.deferredEvents)
@@ -218,12 +218,6 @@ public class DefaultPropertyBackedBeanRegistry implements PropertyBackedBeanRegi
                 this.deferredEvents.clear();
             }
         }
-    }
-
-    @Override
-    public void beforeCommit(boolean readOnly)
-    {
-        // No-op
     }
 
     @Override
@@ -237,23 +231,5 @@ public class DefaultPropertyBackedBeanRegistry implements PropertyBackedBeanRegi
             }
         }
         this.afterTransactionEvents.clear();
-    }
-
-    @Override
-    public void beforeCompletion()
-    {
-        // No-op
-    }
-
-    @Override
-    public void afterRollback()
-    {
-        // No-op
-    }
-
-    @Override
-    public void flush()
-    {
-        // No-op
     }
 }

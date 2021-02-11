@@ -47,7 +47,7 @@ public class StackTraceUtil
             StringBuilder sb,
             int maxDepth)
     {
-        String lineEnding = System.getProperty("line.separator", "\n");
+        final String lineEnding = System.getProperty("line.separator", "\n");
 
         sb.append(msg).append(" ").append(lineEnding)
           .append("   Started at: ").append(lineEnding);
@@ -64,5 +64,12 @@ public class StackTraceUtil
                 sb.append(lineEnding);
             }
         }
+    }
+
+    public static String buildStackTrace(final String msg, final StackTraceElement[] stackTraceElements, final int maxDepth)
+    {
+        final StringBuilder sb = new StringBuilder(1024);
+        buildStackTrace(msg, stackTraceElements, sb, maxDepth);
+        return sb.toString();
     }
 }

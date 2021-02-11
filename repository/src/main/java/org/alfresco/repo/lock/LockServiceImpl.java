@@ -57,7 +57,7 @@ import org.alfresco.repo.policy.PolicyScope;
 import org.alfresco.repo.security.authentication.AuthenticationUtil;
 import org.alfresco.repo.tenant.TenantService;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
-import org.alfresco.repo.transaction.TransactionListener;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.repo.transaction.TransactionalResourceHelper;
 import org.alfresco.repo.version.VersionServicePolicies;
 import org.alfresco.service.cmr.lock.LockService;
@@ -398,14 +398,14 @@ public class LockServiceImpl implements LockService,
         LockState currentLockInfo = statusAndState.getFirst();
         LockStatus currentLockStatus = statusAndState.getSecond();
         
-        if (LockStatus.LOCKED.equals(currentLockStatus) == true)
+        if (LockStatus.LOCKED.equals(currentLockStatus))
         {
             // Error since we are trying to lock a locked node
             throw new UnableToAquireLockException(nodeRef);
         }
-        else if (LockStatus.NO_LOCK.equals(currentLockStatus) == true ||
-                 LockStatus.LOCK_EXPIRED.equals(currentLockStatus) == true ||
-                 LockStatus.LOCK_OWNER.equals(currentLockStatus) == true)
+        else if (LockStatus.NO_LOCK.equals(currentLockStatus) ||
+                 LockStatus.LOCK_EXPIRED.equals(currentLockStatus) ||
+                 LockStatus.LOCK_OWNER.equals(currentLockStatus))
         {
             final Date expiryDate = makeExpiryDate(timeToExpire);
             
@@ -650,7 +650,7 @@ public class LockServiceImpl implements LockService,
 
         // Don't disable the lockable aspect interceptor - allow it to fetch the lock type
         // from the correct place (persistent storage or lockStore).
-        if (this.nodeService.hasAspect(nodeRef, ContentModel.ASPECT_LOCKABLE) == true)
+        if (this.nodeService.hasAspect(nodeRef, ContentModel.ASPECT_LOCKABLE))
         {
             String lockTypeString = (String) this.nodeService.getProperty(nodeRef, ContentModel.PROP_LOCK_TYPE);
             if (lockTypeString != null)
@@ -670,7 +670,7 @@ public class LockServiceImpl implements LockService,
      */
     private void ensureLockAspect(NodeRef nodeRef)
     {
-        if (this.nodeService.hasAspect(nodeRef, ContentModel.ASPECT_LOCKABLE) == false)
+        if (!this.nodeService.hasAspect(nodeRef, ContentModel.ASPECT_LOCKABLE))
         {
             this.nodeService.addAspect(nodeRef, ContentModel.ASPECT_LOCKABLE, null);
         }
@@ -699,21 +699,25 @@ public class LockServiceImpl implements LockService,
                     LockStatus currentLockStatus = getLockStatus(nodeRef, userName);
 
                     LockType lockType = getLockType(nodeRef);
-                    if (LockType.WRITE_LOCK.equals(lockType) == true && 
-                        LockStatus.LOCKED.equals(currentLockStatus) == true)
+                    if (LockType.WRITE_LOCK.equals(lockType) &&
+                        LockStatus.LOCKED.equals(currentLockStatus))
                     {
                         // Lock is of type Write Lock and the node is locked by another owner.
                         throw new NodeLockedException(nodeRef);
                     }
-                    else if (LockType.READ_ONLY_LOCK.equals(lockType) == true &&
-                             (LockStatus.LOCKED.equals(currentLockStatus) == true || LockStatus.LOCK_OWNER.equals(currentLockStatus) == true))
+                    else if (LockType.READ_ONLY_LOCK.equals(lockType) &&
+                             (LockStatus.LOCKED.equals(
+                                 currentLockStatus) || LockStatus.LOCK_OWNER.equals(
+                                 currentLockStatus)))
                     {
                         // Error since there is a read only lock on this object and all
                         // modifications are prevented
                         throw new NodeLockedException(nodeRef);
                     }
-                    else if (LockType.NODE_LOCK.equals(lockType) == true &&
-                            (LockStatus.LOCKED.equals(currentLockStatus) == true || LockStatus.LOCK_OWNER.equals(currentLockStatus) == true))
+                    else if (LockType.NODE_LOCK.equals(lockType) &&
+                             (LockStatus.LOCKED.equals(
+                                 currentLockStatus) || LockStatus.LOCK_OWNER.equals(
+                                 currentLockStatus)))
                     {
                         // Error since there is a read only lock on this object and all
                         // modifications are prevented
@@ -931,8 +935,7 @@ public class LockServiceImpl implements LockService,
     public String getAdditionalInfo(NodeRef nodeRef)
     {
         LockState lockState = getLockState(nodeRef);
-        String additionalInfo = lockState.getAdditionalInfo();
-        return additionalInfo;
+        return lockState.getAdditionalInfo();
     }
 
     @Override
@@ -1001,26 +1004,6 @@ public class LockServiceImpl implements LockService,
     public BehaviourFilter getBehaviourFilter()
     {
         return behaviourFilter;
-    }
-
-    @Override
-    public void flush()
-    {
-    }
-
-    @Override
-    public void beforeCommit(boolean readOnly)
-    {
-    }
-
-    @Override
-    public void beforeCompletion()
-    {
-    }
-
-    @Override
-    public void afterCommit()
-    {
     }
 
     @Override

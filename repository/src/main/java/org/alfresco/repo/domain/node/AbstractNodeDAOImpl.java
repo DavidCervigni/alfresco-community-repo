@@ -25,6 +25,9 @@
  */
 package org.alfresco.repo.domain.node;
 
+import static java.util.Collections.emptySet;
+import static java.util.Collections.singleton;
+
 import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -96,9 +99,8 @@ import org.alfresco.util.EqualsHelper.MapValueComparison;
 import org.alfresco.util.GUID;
 import org.alfresco.util.Pair;
 import org.alfresco.util.PropertyCheck;
-import org.alfresco.util.ReadWriteLockExecuter;
 import org.alfresco.util.ValueProtectingMap;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.dao.ConcurrencyFailureException;
@@ -124,13 +126,13 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     private static final String KEY_LOST_NODE_PAIRS = AbstractNodeDAOImpl.class.getName() + ".lostNodePairs";
     private static final String KEY_DELETED_ASSOCS = AbstractNodeDAOImpl.class.getName() + ".deletedAssocs";
     
-    protected Log logger = LogFactory.getLog(getClass());
-    private Log loggerPaths = LogFactory.getLog(getClass().getName() + ".paths");
+    protected     Log logger      = LogFactory.getLog(getClass());
+    private final Log loggerPaths = LogFactory.getLog(getClass().getName() + ".paths");
     
     protected final boolean isDebugEnabled = logger.isDebugEnabled();
-    private NodePropertyHelper nodePropertyHelper;
-    private UpdateTransactionListener updateTransactionListener = new UpdateTransactionListener();
-    private RetryingCallbackHelper childAssocRetryingHelper;
+    private       NodePropertyHelper        nodePropertyHelper;
+    private final UpdateTransactionListener updateTransactionListener = new UpdateTransactionListener();
+    private final RetryingCallbackHelper    childAssocRetryingHelper;
 
     private TransactionService transactionService;
     private DictionaryService dictionaryService;
@@ -209,11 +211,11 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         childAssocRetryingHelper.setRetryWaitMs(10);
         childAssocRetryingHelper.setMaxRetries(5);
         // Caches
-        rootNodesCache = new EntityLookupCache<StoreRef, Node, Serializable>(new RootNodesCacheCallbackDAO());
-        nodesCache = new EntityLookupCache<Long, Node, NodeRef>(new NodesCacheCallbackDAO());
-        aspectsCache = new EntityLookupCache<NodeVersionKey, Set<QName>, Serializable>(new AspectsCallbackDAO());
-        propertiesCache = new EntityLookupCache<NodeVersionKey, Map<QName, Serializable>, Serializable>(new PropertiesCallbackDAO());
-        childByNameCache = new NullCache<ChildByNameKey, ChildAssocEntity>();
+        rootNodesCache = new EntityLookupCache<>(new RootNodesCacheCallbackDAO());
+        nodesCache = new EntityLookupCache<>(new NodesCacheCallbackDAO());
+        aspectsCache = new EntityLookupCache<>(new AspectsCallbackDAO());
+        propertiesCache = new EntityLookupCache<>(new PropertiesCallbackDAO());
+        childByNameCache = new NullCache<>();
     }
 
     /**
@@ -309,10 +311,10 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
      */
     public void setRootNodesCache(SimpleCache<Serializable, Serializable> cache)
     {
-        this.rootNodesCache = new EntityLookupCache<StoreRef, Node, Serializable>(
-                cache,
-                CACHE_REGION_ROOT_NODES,
-                new RootNodesCacheCallbackDAO());
+        this.rootNodesCache = new EntityLookupCache<>(
+            cache,
+            CACHE_REGION_ROOT_NODES,
+            new RootNodesCacheCallbackDAO());
     }    
     
     /**
@@ -332,10 +334,10 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
      */
     public void setNodesCache(SimpleCache<Serializable, Serializable> cache)
     {
-        this.nodesCache = new EntityLookupCache<Long, Node, NodeRef>(
-                cache,
-                CACHE_REGION_NODES,
-                new NodesCacheCallbackDAO());
+        this.nodesCache = new EntityLookupCache<>(
+            cache,
+            CACHE_REGION_NODES,
+            new NodesCacheCallbackDAO());
         if (cache instanceof TransactionalCache)
         {
             this.nodesTransactionalCache = (TransactionalCache<Serializable, Serializable>) cache;
@@ -349,10 +351,10 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
      */
     public void setAspectsCache(SimpleCache<NodeVersionKey, Set<QName>> aspectsCache)
     {
-        this.aspectsCache = new EntityLookupCache<NodeVersionKey, Set<QName>, Serializable>(
-                aspectsCache,
-                CACHE_REGION_ASPECTS,
-                new AspectsCallbackDAO());
+        this.aspectsCache = new EntityLookupCache<>(
+            aspectsCache,
+            CACHE_REGION_ASPECTS,
+            new AspectsCallbackDAO());
     }
     
     /**
@@ -362,10 +364,10 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
      */
     public void setPropertiesCache(SimpleCache<NodeVersionKey, Map<QName, Serializable>> propertiesCache)
     {
-        this.propertiesCache = new EntityLookupCache<NodeVersionKey, Map<QName, Serializable>, Serializable>(
-                propertiesCache,
-                CACHE_REGION_PROPERTIES,
-                new PropertiesCallbackDAO());
+        this.propertiesCache = new EntityLookupCache<>(
+            propertiesCache,
+            CACHE_REGION_PROPERTIES,
+            new PropertiesCallbackDAO());
     }
     
     /**
@@ -441,33 +443,33 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
      * @param touchNodes            <tt>true<tt> to also touch the nodes
      * @return                      the number of child associations found (might be capped)
      */
-    private int invalidateNodeChildrenCaches(Long parentNodeId, boolean primary, boolean touchNodes)
+    private int invalidateNodeChildrenCaches(
+        final Long parentNodeId,
+        final boolean primary,
+        final boolean touchNodes)
     {
         Long txnId = getCurrentTransaction().getId();
 
         int count = 0;
-        List<Long> childNodeIds = new ArrayList<Long>(256);
+        final List<Long> childNodeIds = new ArrayList<>(256);
         Long minChildNodeIdInclusive = Long.MIN_VALUE;
-        while (minChildNodeIdInclusive != null)
+        while (true)
         {
             childNodeIds.clear();
             List<ChildAssocEntity> childAssocs = selectChildNodeIds(
                     parentNodeId,
-                    Boolean.valueOf(primary),
+                    primary,
                     minChildNodeIdInclusive,
                     256);
             // Remove the cache entries as we go
             for (ChildAssocEntity childAssoc : childAssocs)
             {
-                Long childNodeId = childAssoc.getChildNode().getId();
+                final Long childNodeId = childAssoc.getChildNode().getId();
                 if (childNodeId.compareTo(minChildNodeIdInclusive) < 0)
                 {
                     throw new RuntimeException("Query results did not increase for child node id ID");
                 }
-                else
-                {
-                    minChildNodeIdInclusive = new Long(childNodeId.longValue() + 1L);
-                }
+                minChildNodeIdInclusive = childNodeId + 1L;
                 // Invalidate the node cache
                 childNodeIds.add(childNodeId);
                 invalidateNodeCaches(childNodeId);
@@ -496,7 +498,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     private void invalidateNodeCaches(Long nodeId)
     {
         // Take the current value from the nodesCache and use that to invalidate the other caches
-        Node node = nodesCache.getValue(nodeId);
+        final Node node = nodesCache.getValue(nodeId);
         if (node != null)
         {
             invalidateNodeCaches(node, true, true, true);
@@ -630,20 +632,17 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         {
             return null;
         }
-        else
-        {
-            return new Pair<Long, StoreRef>(rootNodePair.getSecond().getStore().getId(), rootNodePair.getFirst());
-        }
+        return new Pair<>(rootNodePair.getSecond().getStore().getId(), rootNodePair.getFirst());
     }
     
     @Override
     public List<Pair<Long, StoreRef>> getStores()
     {
         List<StoreEntity> storeEntities = selectAllStores();
-        List<Pair<Long, StoreRef>> storeRefs = new ArrayList<Pair<Long,StoreRef>>(storeEntities.size());
+        List<Pair<Long, StoreRef>> storeRefs = new ArrayList<>(storeEntities.size());
         for (StoreEntity storeEntity : storeEntities)
         {
-            storeRefs.add(new Pair<Long, StoreRef>(storeEntity.getId(), storeEntity.getStoreRef()));
+            storeRefs.add(new Pair<>(storeEntity.getId(), storeEntity.getStoreRef()));
         }
         return storeRefs;
     }
@@ -658,17 +657,13 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         {
             throw new InvalidStoreRefException(storeRef);
         }
-        else
-        {
-            return rootNodePair.getSecond().getStore();
-        }
+        return rootNodePair.getSecond().getStore();
     }
     
     @Override
     public boolean exists(StoreRef storeRef)
     {
-        Pair<StoreRef, Node> rootNodePair = rootNodesCache.getByKey(storeRef);
-        return rootNodePair != null;
+        return rootNodesCache.getByKey(storeRef) != null;
     }
 
     @Override
@@ -679,50 +674,37 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         {
             throw new InvalidStoreRefException(storeRef);
         }
-        else
-        {
-            return rootNodePair.getSecond().getNodePair();
-        }
+        return rootNodePair.getSecond().getNodePair();
     }
     
     @Override
     public Set<NodeRef> getAllRootNodes(StoreRef storeRef)
     {
         Set<NodeRef> rootNodes = allRootNodesCache.get(storeRef);
-        if (rootNodes == null)
+        if (rootNodes != null)
         {
-            final Map<StoreRef, Set<NodeRef>> allRootNodes = new HashMap<StoreRef, Set<NodeRef>>(97);
-            getNodesWithAspects(Collections.singleton(ContentModel.ASPECT_ROOT), 0L, Long.MAX_VALUE, new NodeRefQueryCallback()
-            {
-                @Override
-                public boolean handle(Pair<Long, NodeRef> nodePair)
-                {
-                    NodeRef nodeRef = nodePair.getSecond();
-                    StoreRef storeRef = nodeRef.getStoreRef();
-                    Set<NodeRef> rootNodes = allRootNodes.get(storeRef);
-                    if (rootNodes == null)
-                    {
-                        rootNodes = new HashSet<NodeRef>(97);
-                        allRootNodes.put(storeRef, rootNodes);
-                    }
-                    rootNodes.add(nodeRef);
-                    return true;
-                }
+            return rootNodes;
+        }
+
+        final Map<StoreRef, Set<NodeRef>> allRootNodes = new HashMap<>(97);
+        getNodesWithAspects(singleton(ContentModel.ASPECT_ROOT), 0L, Long.MAX_VALUE,
+            nodePair -> {
+                final NodeRef nodeRef = nodePair.getSecond();
+                StoreRef storeRef1 = nodeRef.getStoreRef();
+                Set<NodeRef> rootNodes1 = allRootNodes.computeIfAbsent(storeRef1,
+                    k -> new HashSet<>(2<<7));
+                rootNodes1.add(nodeRef);
+                return true;
             });
-            rootNodes = allRootNodes.get(storeRef);
-            if (rootNodes == null)
+        rootNodes = allRootNodes.computeIfAbsent(storeRef, k -> emptySet());
+
+        for (Map.Entry<StoreRef, Set<NodeRef>> entry : allRootNodes.entrySet())
+        {
+            StoreRef entryStoreRef = entry.getKey();
+            // Prevent unnecessary cross-invalidation
+            if (!allRootNodesCache.contains(entryStoreRef))
             {
-                rootNodes = Collections.emptySet();
-                allRootNodes.put(storeRef, rootNodes);
-            }
-            for (Map.Entry<StoreRef, Set<NodeRef>> entry : allRootNodes.entrySet())
-            {
-                StoreRef entryStoreRef = entry.getKey();
-                // Prevent unnecessary cross-invalidation
-                if (!allRootNodesCache.contains(entryStoreRef))
-                {
-                    allRootNodesCache.put(entryStoreRef, entry.getValue());
-                }
+                allRootNodesCache.put(entryStoreRef, entry.getValue());
             }
         }
         return rootNodes;
@@ -746,7 +728,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         Long nodeTypeQNameId = qnameDAO.getOrCreateQName(ContentModel.TYPE_STOREROOT).getFirst();
         NodeEntity rootNode = newNodeImpl(store, null, nodeTypeQNameId, null, aclId, null, true);
         Long rootNodeId = rootNode.getId();
-        addNodeAspects(rootNodeId, Collections.singleton(ContentModel.ASPECT_ROOT));
+        addNodeAspects(rootNodeId, singleton(ContentModel.ASPECT_ROOT));
 
         // Now update the store with the root node ID
         store.setRootNode(rootNode);
@@ -759,7 +741,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         {
             logger.debug("Created store: \n" + "   " + store);
         }
-        return new Pair<Long, NodeRef>(rootNode.getId(), rootNode.getNodeRef());
+        return new Pair<>(rootNode.getId(), rootNode.getNodeRef());
     }
     
     @Override
@@ -811,8 +793,8 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
          */
         public Pair<StoreRef, Node> findByKey(StoreRef storeRef)
         {
-            NodeEntity node = selectStoreRootNode(storeRef);
-            return node == null ? null : new Pair<StoreRef, Node>(storeRef, node);
+            final NodeEntity node = selectStoreRootNode(storeRef);
+            return node == null ? null : new Pair<>(storeRef, node);
         }
     }
 
@@ -850,7 +832,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             {
                 // Lock it to prevent 'accidental' modification
                 node.lock();
-                return new Pair<Long, Node>(nodeId, node);
+                return new Pair<>(nodeId, node);
             }
             else
             {
@@ -879,12 +861,9 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             {
                 // Lock it to prevent 'accidental' modification
                 node.lock();
-                return new Pair<Long, Node>(node.getId(), node);
+                return new Pair<>(node.getId(), node);
             }
-            else
-            {
-                return null;
-            }
+            return null;
         }
     }
 
@@ -926,10 +905,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         {
             return null;
         }
-        else
-        {
-            return nodePair.getSecond().getNodeStatus(qnameDAO); 
-        }
+        return nodePair.getSecond().getNodeStatus(qnameDAO);
     }
     
     @Override
@@ -941,10 +917,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         {
             return null;
         }
-        else
-        {
-            return nodePair.getSecond().getNodeStatus(qnameDAO); 
-        }
+        return nodePair.getSecond().getNodeStatus(qnameDAO);
     }
 
     @Override
@@ -953,40 +926,39 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         NodeEntity node = new NodeEntity(nodeRef);
         Pair<Long, Node> pair = nodesCache.getByValue(node);
         // Check it
-        if (pair == null || pair.getSecond().getDeleted(qnameDAO))
+        if (pair != null && !pair.getSecond().getDeleted(qnameDAO))
         {
-            // The cache says that the node is not there or is deleted.
-            // We double check by going to the DB
-            Node dbNode = selectNodeByNodeRef(nodeRef);
-            if (dbNode == null)
-            {
-                // The DB agrees. This is an invalid noderef. Why are you trying to use it?
-                return null;
-            }
-            else if (dbNode.getDeleted(qnameDAO))
-            {
-                // We may have reached this deleted node via an invalid association; trigger a post transaction prune of
-                // any associations that point to this deleted one
-                pruneDanglingAssocs(dbNode.getId());
-
-                // The DB agrees. This is a deleted noderef.
-                return null;
-            }
-            else
-            {
-                // The cache was wrong, possibly due to it caching negative results earlier.
-                if (isDebugEnabled)
-                {
-                    logger.debug("Repairing stale cache entry for node: " + nodeRef);
-                }
-                Long nodeId = dbNode.getId();
-                invalidateNodeCaches(nodeId);
-                dbNode.lock();                            // Prevent unexpected edits of values going into the cache
-                nodesCache.setValue(nodeId, dbNode);
-                return dbNode.getNodePair();
-            }
+            return pair.getSecond().getNodePair();
         }
-        return pair.getSecond().getNodePair();
+
+        // The cache says that the node is not there or is deleted.
+        // We double check by going to the DB
+        Node dbNode = selectNodeByNodeRef(nodeRef);
+        if (dbNode == null)
+        {
+            // The DB agrees. This is an invalid noderef. Why are you trying to use it?
+            return null;
+        }
+        if (dbNode.getDeleted(qnameDAO))
+        {
+            // We may have reached this deleted node via an invalid association; trigger a post transaction prune of
+            // any associations that point to this deleted one
+            pruneDanglingAssocs(dbNode.getId());
+
+            // The DB agrees. This is a deleted noderef.
+            return null;
+        }
+
+        // The cache was wrong, possibly due to it caching negative results earlier.
+        if (isDebugEnabled)
+        {
+            logger.debug("Repairing stale cache entry for node: " + nodeRef);
+        }
+        Long nodeId = dbNode.getId();
+        invalidateNodeCaches(nodeId);
+        dbNode.lock();                            // Prevent unexpected edits of values going into the cache
+        nodesCache.setValue(nodeId, dbNode);
+        return dbNode.getNodePair();
     }
 
     /**
@@ -1056,42 +1028,38 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     {
         Pair<Long, Node> pair = nodesCache.getByKey(nodeId);
         // Check it
-        if (pair == null || pair.getSecond().getDeleted(qnameDAO))
-        {
-            // The cache says that the node is not there or is deleted.
-            // We double check by going to the DB
-            Node dbNode = selectNodeById(nodeId);
-            if (dbNode == null)
-            {
-                // The DB agrees. This is an invalid noderef. Why are you trying to use it?
-                return null;
-            }
-            else if (dbNode.getDeleted(qnameDAO))
-            {
-                // We may have reached this deleted node via an invalid association; trigger a post transaction prune of
-                // any associations that point to this deleted one
-                pruneDanglingAssocs(dbNode.getId());
-
-                // The DB agrees. This is a deleted noderef.
-                return null;
-            }
-            else
-            {
-                // The cache was wrong, possibly due to it caching negative results earlier.
-                if (isDebugEnabled)
-                {
-                    logger.debug("Repairing stale cache entry for node: " + nodeId);
-                }
-                invalidateNodeCaches(nodeId);
-                dbNode.lock();                              // Prevent unexpected edits of values going into the cache
-                nodesCache.setValue(nodeId, dbNode);
-                return dbNode.getNodePair();
-            }
-        }
-        else
+        if (pair != null && !pair.getSecond().getDeleted(qnameDAO))
         {
             return pair.getSecond().getNodePair();
         }
+
+        // The cache says that the node is not there or is deleted.
+        // We double check by going to the DB
+        Node dbNode = selectNodeById(nodeId);
+        if (dbNode == null)
+        {
+            // The DB agrees. This is an invalid noderef. Why are you trying to use it?
+            return null;
+        }
+        if (dbNode.getDeleted(qnameDAO))
+        {
+            // We may have reached this deleted node via an invalid association; trigger a post transaction prune of
+            // any associations that point to this deleted one
+            pruneDanglingAssocs(dbNode.getId());
+
+            // The DB agrees. This is a deleted noderef.
+            return null;
+        }
+
+        // The cache was wrong, possibly due to it caching negative results earlier.
+        if (isDebugEnabled)
+        {
+            logger.debug("Repairing stale cache entry for node: " + nodeId);
+        }
+        invalidateNodeCaches(nodeId);
+        dbNode.lock();                              // Prevent unexpected edits of values going into the cache
+        nodesCache.setValue(nodeId, dbNode);
+        return dbNode.getNodePair();
     }
     
     /**
@@ -1105,7 +1073,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     private Node getNodeNotNull(Long nodeId, boolean liveOnly)
     {
         Pair<Long, Node> pair = nodesCache.getByKey(nodeId);
-        
+
         if (pair == null)
         {
             // The node has no entry in the database
@@ -1116,7 +1084,8 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
                     "   ID:        " + nodeId + "\n" +
                     "   DB row:    " + dbNode);
         }
-        else if (pair.getSecond().getDeleted(qnameDAO) && liveOnly)
+
+        if (pair.getSecond().getDeleted(qnameDAO) && liveOnly)
         {
             // The node is not 'live' as was requested
             NodeEntity dbNode = selectNodeById(nodeId);
@@ -1129,10 +1098,8 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
                     "   ID:        " + nodeId + "\n" +
                     "   DB row:    " + dbNode);
         }
-        else
-        {
-            return pair.getSecond();
-        }
+
+        else return pair.getSecond();
     }
 
     @Override
@@ -1318,16 +1285,16 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         Long id = newNodeImplInsert(node);
         node.setId(id);
         
-        Set<QName> nodeAspects = null;
+        Set<QName> nodeAspects;
         if (addAuditableAspect)
         {
             Long auditableAspectQNameId = qnameDAO.getOrCreateQName(ContentModel.ASPECT_AUDITABLE).getFirst();
             insertNodeAspect(id, auditableAspectQNameId);
-            nodeAspects = Collections.<QName>singleton(ContentModel.ASPECT_AUDITABLE);
+            nodeAspects = Collections.singleton(ContentModel.ASPECT_AUDITABLE);
         }
         else
         {
-            nodeAspects = Collections.<QName>emptySet();
+            nodeAspects = Collections.emptySet();
         }
         
         // Lock the node and cache
@@ -1335,7 +1302,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         nodesCache.setValue(id, node);
         //  Pre-populate some of the other caches so that we don't immediately query
         setNodeAspectsCached(id, nodeAspects);
-        setNodePropertiesCached(id, Collections.<QName, Serializable>emptyMap());
+        setNodePropertiesCached(id, Collections.emptyMap());
         
         if (isDebugEnabled)
         {
@@ -1346,7 +1313,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     
     protected Long newNodeImplInsert(NodeEntity node)
     {
-        Long id = null;
+        Long id;
         Savepoint savepoint = controlDAO.createSavepoint("newNodeImpl");
         try
         {
@@ -1365,23 +1332,22 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
                 // There does not appear to be any row that could prevent an insert
                 throw new AlfrescoRuntimeException("Failed to insert new node: " + node, e);
             }
-            else if (dbTargetNode.getDeleted(qnameDAO))
-            {
-                Long dbTargetNodeId = dbTargetNode.getId();
-                // This is OK.  It happens when we create a node that existed in the past.
-                // Remove the row completely
-                deleteNodeProperties(dbTargetNodeId, (Set<Long>) null);
-                deleteNodeById(dbTargetNodeId);
-                // Now repeat the insert but let any further problems just be thrown out
-                id = insertNode(node);
-            }
-            else
+
+            if (!dbTargetNode.getDeleted(qnameDAO))
             {
                 // A live node exists.
                 throw new NodeExistsException(dbTargetNode.getNodePair(), e);
             }
+
+            Long dbTargetNodeId = dbTargetNode.getId();
+            // This is OK.  It happens when we create a node that existed in the past.
+            // Remove the row completely
+            deleteNodeProperties(dbTargetNodeId, (Set<Long>) null);
+            deleteNodeById(dbTargetNodeId);
+            // Now repeat the insert but let any further problems just be thrown out
+            id = insertNode(node);
         }
-        
+
         return id;
     }
 
@@ -1493,7 +1459,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         {
             logger.debug("Moved node: " + assocPair + " ... " + nodePair);
         }
-        return new Pair<Pair<Long, ChildAssociationRef>, Pair<Long, NodeRef>>(assocPair, nodePair);
+        return new Pair<>(assocPair, nodePair);
     }
     
     protected void updatePrimaryParentAssocs(
@@ -1507,20 +1473,14 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
                 final QName assocQName)
     {
         // Because we are retrying in-transaction i.e. absorbing exceptions, we need partial rollback &/or via savepoint if needed (eg. PostgreSQL)
-        RetryingCallback<Integer> callback = new RetryingCallback<Integer>()
-        {
-            public Integer execute() throws Throwable
-            {
-                return updatePrimaryParentAssocsImpl(primaryParentAssoc,
-                            newParentNode,
-                            childNode,
-                            newChildNodeId,
-                            childNodeName,
-                            oldParentNodeId,
-                            assocTypeQName,
-                            assocQName);
-            }
-        };
+        RetryingCallback<Integer> callback = () -> updatePrimaryParentAssocsImpl(primaryParentAssoc,
+            newParentNode,
+            childNode,
+            newChildNodeId,
+            childNodeName,
+            oldParentNodeId,
+            assocTypeQName,
+            assocQName);
         childAssocRetryingHelper.doWithRetry(callback);
     }
     
@@ -1637,7 +1597,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         int batchSize = 1000;
       
         int touched = 0;
-        ArrayList<Long> batch = new ArrayList<Long>(batchSize);
+        ArrayList<Long> batch = new ArrayList<>(batchSize);
         for(Long nodeId : nodeIds)
         {
             invalidateNodeCaches(nodeId);
@@ -1953,7 +1913,8 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         Set<QName> nodeAspects = getNodeAspects(nodeId);
 
         // Clean up content data
-        Set<QName> contentQNames = new HashSet<QName>(dictionaryService.getAllProperties(DataTypeDefinition.CONTENT));
+        Set<QName> contentQNames = new HashSet<>(
+            dictionaryService.getAllProperties(DataTypeDefinition.CONTENT));
         Set<Long> contentQNamesToRemoveIds = qnameDAO.convertQNamesToIds(contentQNames, false);
         contentDataDAO.deleteContentDataForNode(nodeId, contentQNamesToRemoveIds);
         
@@ -2032,7 +1993,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     {
         Map<QName, Serializable> props = getNodePropertiesCached(nodeId);
         // Create a shallow copy to allow additions
-        props = new HashMap<QName, Serializable>(props);
+        props = new HashMap<>(props);
         
         Node node = getNodeNotNull(nodeId, false);
         // Handle sys:referenceable
@@ -2052,7 +2013,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         
         // Wrap to ensure that we only clone values if the client attempts to modify
         // the map or retrieve values that might, themselves, be mutable
-        props = new ValueProtectingMap<QName, Serializable>(props, NodePropertyValue.IMMUTABLE_CLASSES);
+        props = new ValueProtectingMap<>(props, NodePropertyValue.IMMUTABLE_CLASSES);
         
         // Done
         if (isDebugEnabled)
@@ -2093,7 +2054,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             Map<QName, Serializable> props = getNodePropertiesCached(nodeId);
             // Wrap to ensure that we only clone values if the client attempts to modify
             // the map or retrieve values that might, themselves, be mutable
-            props = new ValueProtectingMap<QName, Serializable>(props, NodePropertyValue.IMMUTABLE_CLASSES);
+            props = new ValueProtectingMap<>(props, NodePropertyValue.IMMUTABLE_CLASSES);
             // The 'get' here will clone the value if it is mutable
             value = props.get(propertyQName);
         }
@@ -2138,7 +2099,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         nodeUpdate.setId(nodeId);
         
         // Copy inbound values
-        newProps = new HashMap<QName, Serializable>(newProps);
+        newProps = new HashMap<>(newProps);
 
         // Copy cm:auditable
         if (!policyBehaviourFilter.isEnabled(node.getNodeRef(), ContentModel.ASPECT_AUDITABLE))
@@ -2198,7 +2159,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         // advantage that the differencing code can eliminate unnecessary writes
         // completely.
         Map<QName, Serializable> oldPropsCached = getNodePropertiesCached(nodeId);  // Keep pristine for caching
-        Map<QName, Serializable> oldProps = new HashMap<QName, Serializable>(oldPropsCached);
+        Map<QName, Serializable> oldProps = new HashMap<>(oldPropsCached);
         // If we're adding, remove current properties that are not of interest
         if (isAddOnly)
         {
@@ -2215,9 +2176,9 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
                 oldProps,
                 newProps);
         // Keep track of properties to delete and add
-        Set<QName> propsToDelete = new HashSet<QName>(oldProps.size()*2);
-        Map<QName, Serializable> propsToAdd = new HashMap<QName, Serializable>(newProps.size() * 2);
-        Set<QName> contentQNamesToDelete = new HashSet<QName>(5);
+        Set<QName> propsToDelete = new HashSet<>(oldProps.size() * 2);
+        Map<QName, Serializable> propsToAdd = new HashMap<>(newProps.size() * 2);
+        Set<QName> contentQNamesToDelete = new HashSet<>(5);
         for (Map.Entry<QName, MapValueComparison> entry : diff.entrySet())
         {
             QName qname = entry.getKey();
@@ -2337,7 +2298,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             if (isAddOnly)
             {
                 // Copy cache properties for additions
-                propsToCache = new HashMap<QName, Serializable>(oldPropsCached);
+                propsToCache = new HashMap<>(oldPropsCached);
                 // Combine the old and new properties
                 propsToCache.putAll(propsToAdd);
             }
@@ -2377,7 +2338,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     public boolean addNodeProperty(Long nodeId, QName qname, Serializable value)
     {
         // Copy inbound values
-        Map<QName, Serializable> newProps = new HashMap<QName, Serializable>(3);
+        Map<QName, Serializable> newProps = new HashMap<>(3);
         newProps.put(qname, value);
         // Merge with current values
         boolean modified = setNodePropertiesImpl(nodeId, newProps, true);
@@ -2399,7 +2360,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     @Override
     public boolean removeNodeProperties(Long nodeId, Set<QName> propertyQNames)
     {
-        propertyQNames = new HashSet<QName>(propertyQNames);
+        propertyQNames = new HashSet<>(propertyQNames);
         ReferenceablePropertiesEntity.removeReferenceableProperties(propertyQNames);
         if (propertyQNames.size() == 0)
         {
@@ -2420,7 +2381,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             // Get cache props
             Map<QName, Serializable> cachedProps = getNodePropertiesCached(nodeId);
             // Remove deleted properties
-            Map<QName, Serializable> props = new HashMap<QName, Serializable>(cachedProps);
+            Map<QName, Serializable> props = new HashMap<>(cachedProps);
             props.keySet().removeAll(propertyQNames);
             // Update cache
             setNodePropertiesCached(nodeId, props);
@@ -2563,7 +2524,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             // Convert to public properties
             Map<QName, Serializable> props = nodePropertyHelper.convertToPublicProperties(propsRaw);
             // Done
-            return new Pair<NodeVersionKey, Map<QName, Serializable>>(nodeVersionKey, Collections.unmodifiableMap(props));
+            return new Pair<>(nodeVersionKey, Collections.unmodifiableMap(props));
         }
     }
     
@@ -2607,7 +2568,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             return false;
         }
         // Copy the inbound set
-        Set<QName> aspectQNamesToAdd = new HashSet<QName>(aspectQNames);
+        Set<QName> aspectQNamesToAdd = new HashSet<>(aspectQNames);
         // Get existing
         Set<QName> existingAspectQNames = getNodeAspectsCached(nodeId);
         // Find out what needs adding
@@ -2641,7 +2602,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         }
         
         // Collate the new aspect set, so that touch recognizes the addtion of cm:auditable
-        Set<QName> newAspectQNames = new HashSet<QName>(existingAspectQNames);
+        Set<QName> newAspectQNames = new HashSet<>(existingAspectQNames);
         newAspectQNames.addAll(aspectQNamesToAdd);
 
         // Handle sys:aspect_root
@@ -2668,7 +2629,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
 
     public boolean removeNodeAspects(Long nodeId)
     {
-        Set<QName> newAspectQNames = Collections.<QName>emptySet();
+        Set<QName> newAspectQNames = Collections.emptySet();
         
         // Touch the node; all caches are fine
         touchNode(nodeId, null, newAspectQNames, false, false, false);
@@ -2694,7 +2655,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         Set<QName> existingAspectQNames = getNodeAspects(nodeId);
 
         // Collate the new set of aspects so that touch works correctly against cm:auditable
-        Set<QName> newAspectQNames = new HashSet<QName>(existingAspectQNames);
+        Set<QName> newAspectQNames = new HashSet<>(existingAspectQNames);
         newAspectQNames.removeAll(aspectQNames);
 
         // Touch the node; all caches are fine
@@ -2742,7 +2703,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             // No point running a query
             return;
         }
-        List<Long> qnameIds = new ArrayList<Long>(qnameIdsSet);
+        List<Long> qnameIds = new ArrayList<>(qnameIdsSet);
         selectNodesWithAspects(qnameIds, minNodeId, maxNodeId, resultsCallback);
     }
 
@@ -2758,7 +2719,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             invalidateNodeCaches(nodeId);
             throw new DataIntegrityViolationException("Invalid node ID: " + nodeId);
         }
-        return new HashSet<QName>(cacheEntry.getSecond());
+        return new HashSet<>(cacheEntry.getSecond());
     }
     
     /**
@@ -2798,7 +2759,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         public Pair<NodeVersionKey, Set<QName>> findByKey(NodeVersionKey nodeVersionKey)
         {
             Long nodeId = nodeVersionKey.getNodeId();
-            Set<Long> nodeIds = Collections.singleton(nodeId);
+            Set<Long> nodeIds = singleton(nodeId);
             Map<NodeVersionKey, Set<QName>> nodeAspectQNameIdsByVersionKey = selectNodeAspects(nodeIds);
             Set<QName> nodeAspectQNames = nodeAspectQNameIdsByVersionKey.get(nodeVersionKey);
             if (nodeAspectQNames == null)
@@ -2807,7 +2768,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
                 if (nodeAspectQNameIdsByVersionKey.size() == 0)
                 {
                     // This is OK.  The node has no properties
-                    nodeAspectQNames = Collections.emptySet();
+                    nodeAspectQNames = emptySet();
                 }
                 else
                 {
@@ -2819,7 +2780,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
                 }
             }
             // Done
-            return new Pair<NodeVersionKey, Set<QName>>(nodeVersionKey, Collections.unmodifiableSet(nodeAspectQNames));
+            return new Pair<>(nodeVersionKey, Collections.unmodifiableSet(nodeAspectQNames));
         }
     }
     
@@ -2923,12 +2884,12 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     public Collection<Pair<Long, AssociationRef>> getNodeAssocsToAndFrom(Long nodeId)
     {
         List<NodeAssocEntity> nodeAssocEntities = selectNodeAssocs(nodeId);
-        List<Pair<Long, AssociationRef>> results = new ArrayList<Pair<Long,AssociationRef>>(nodeAssocEntities.size());
+        List<Pair<Long, AssociationRef>> results = new ArrayList<>(nodeAssocEntities.size());
         for (NodeAssocEntity nodeAssocEntity : nodeAssocEntities)
         {
             Long assocId = nodeAssocEntity.getId();
             AssociationRef assocRef = nodeAssocEntity.getAssociationRef(qnameDAO);
-            results.add(new Pair<Long, AssociationRef>(assocId, assocRef));
+            results.add(new Pair<>(assocId, assocRef));
         }
         return results;
     }
@@ -2948,12 +2909,12 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             typeQNameId = typeQNamePair.getFirst();
         }
         List<NodeAssocEntity> nodeAssocEntities = selectNodeAssocsByTarget(targetNodeId, typeQNameId);
-        List<Pair<Long, AssociationRef>> results = new ArrayList<Pair<Long,AssociationRef>>(nodeAssocEntities.size());
+        List<Pair<Long, AssociationRef>> results = new ArrayList<>(nodeAssocEntities.size());
         for (NodeAssocEntity nodeAssocEntity : nodeAssocEntities)
         {
             Long assocId = nodeAssocEntity.getId();
             AssociationRef assocRef = nodeAssocEntity.getAssociationRef(qnameDAO);
-            results.add(new Pair<Long, AssociationRef>(assocId, assocRef));
+            results.add(new Pair<>(assocId, assocRef));
         }
         return results;
     }
@@ -2973,12 +2934,12 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             typeQNameId = typeQNamePair.getFirst();
         }
         List<NodeAssocEntity> nodeAssocEntities = selectNodeAssocsBySource(sourceNodeId, typeQNameId);
-        List<Pair<Long, AssociationRef>> results = new ArrayList<Pair<Long,AssociationRef>>(nodeAssocEntities.size());
+        List<Pair<Long, AssociationRef>> results = new ArrayList<>(nodeAssocEntities.size());
         for (NodeAssocEntity nodeAssocEntity : nodeAssocEntities)
         {
             Long assocId = nodeAssocEntity.getId();
             AssociationRef assocRef = nodeAssocEntity.getAssociationRef(qnameDAO);
-            results.add(new Pair<Long, AssociationRef>(assocId, assocRef));
+            results.add(new Pair<>(assocId, assocRef));
         }
         return results;
     }
@@ -3034,12 +2995,12 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         List<NodeAssocEntity> nodeAssocEntities = selectNodeAssocsBySourceAndPropertyValue(sourceNodeId, typeQNameId, propertyQNameId, nodeValue);
 
         // Create custom result
-        List<Pair<Long, AssociationRef>> results = new ArrayList<Pair<Long, AssociationRef>>(nodeAssocEntities.size());
+        List<Pair<Long, AssociationRef>> results = new ArrayList<>(nodeAssocEntities.size());
         for (NodeAssocEntity nodeAssocEntity : nodeAssocEntities)
         {
             Long assocId = nodeAssocEntity.getId();
             AssociationRef assocRef = nodeAssocEntity.getAssociationRef(qnameDAO);
-            results.add(new Pair<Long, AssociationRef>(assocId, assocRef));
+            results.add(new Pair<>(assocId, assocRef));
         }
         return results;
     }
@@ -3055,7 +3016,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         else
         {
             AssociationRef assocRef = nodeAssocEntity.getAssociationRef(qnameDAO);
-            return new Pair<Long, AssociationRef>(assocId, assocRef);
+            return new Pair<>(assocId, assocRef);
         }
     }
     
@@ -3135,13 +3096,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     protected Long newChildAssocInsert(final ChildAssocEntity assoc, final QName assocTypeQName, final String childNodeName)
     {
         // Because we are retrying in-transaction i.e. absorbing exceptions, we need partial rollback &/or via savepoint if needed (eg. PostgreSQL)
-        RetryingCallback<Long> callback = new RetryingCallback<Long>()
-        {
-            public Long execute() throws Throwable
-            {
-                return newChildAssocInsertImpl(assoc, assocTypeQName, childNodeName);
-            }
-        };
+        RetryingCallback<Long> callback = () -> newChildAssocInsertImpl(assoc, assocTypeQName, childNodeName);
         Long assocId = childAssocRetryingHelper.doWithRetry(callback);
         return assocId;
     }
@@ -3273,13 +3228,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     protected int setChildAssocsUniqueNameImpl(final Long childNodeId, final String childName)
     {
         // Because we are retrying in-transaction i.e. absorbing exceptions, we need partial rollback &/or via savepoint if needed (eg. PostgreSQL)
-        RetryingCallback<Integer> callback = new RetryingCallback<Integer>()
-        {
-            public Integer execute() throws Throwable
-            {
-                return updateChildAssocUniqueNameImpl(childNodeId, childName);
-            }
-        };
+        RetryingCallback<Integer> callback = () -> updateChildAssocUniqueNameImpl(childNodeId, childName);
         return childAssocRetryingHelper.doWithRetry(callback);
     }
     
@@ -3359,7 +3308,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             return assocs.get(0).getPair(qnameDAO);
         }
         // Keep the primary association or, if there isn't one, the association with the smallest ID
-        Map<Long, ChildAssocEntity> assocsToDeleteById = new HashMap<Long, ChildAssocEntity>(assocs.size() * 2);
+        Map<Long, ChildAssocEntity> assocsToDeleteById = new HashMap<>(assocs.size() * 2);
         Long minId = null;
         Long primaryId = null;
         for (ChildAssocEntity assoc : assocs)
@@ -3413,7 +3362,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             this.preload = callback.preLoadNodes();
             if (preload)
             {
-                nodeRefs = new LinkedList<NodeRef>();           // No memory required
+                nodeRefs = new LinkedList<>();           // No memory required
             }
             else
             {
@@ -3679,35 +3628,32 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
                         assoc.getChildNode().getNodePair());
             }
             resultsCallback.done();
+            return;
         }
-        else
+
+        // Decide whether we query or filter
+        ParentAssocsInfo parentAssocs = getParentAssocsCached(childNodeId);
+        if (parentAssocs.getParentAssocs().size() > PARENT_ASSOCS_CACHE_FILTER_THRESHOLD)
         {
-            // Decide whether we query or filter
-            ParentAssocsInfo parentAssocs = getParentAssocsCached(childNodeId);
-            if (parentAssocs.getParentAssocs().size() > PARENT_ASSOCS_CACHE_FILTER_THRESHOLD)
-            {
-                // Query
-                selectParentAssocs(childNodeId, assocTypeQName, assocQName, isPrimary, resultsCallback);
-            }
-            else
-            {
-                // Go for the cache (and filter)
-                for (ChildAssocEntity assoc : parentAssocs.getParentAssocs().values())
-                {
-                    Pair<Long, ChildAssociationRef> assocPair = assoc.getPair(qnameDAO);
-                    if (((assocTypeQName == null) || (assocPair.getSecond().getTypeQName().equals(assocTypeQName))) &&
-                        ((assocQName == null) || (assocPair.getSecond().getQName().equals(assocQName))))
-                    {
-                        resultsCallback.handle(
-                                assocPair,
-                                assoc.getParentNode().getNodePair(),
-                                assoc.getChildNode().getNodePair());
-                    }
-                }
-                resultsCallback.done();
-            }
-            
+            // Query
+            selectParentAssocs(childNodeId, assocTypeQName, assocQName, isPrimary, resultsCallback);
+            return;
         }
+
+        // Go for the cache (and filter)
+        for (ChildAssocEntity assoc : parentAssocs.getParentAssocs().values())
+        {
+            Pair<Long, ChildAssociationRef> assocPair = assoc.getPair(qnameDAO);
+            if (((assocTypeQName == null) || (assocPair.getSecond().getTypeQName().equals(assocTypeQName))) &&
+                ((assocQName == null) || (assocPair.getSecond().getQName().equals(assocQName))))
+            {
+                resultsCallback.handle(
+                        assocPair,
+                        assoc.getParentNode().getNodePair(),
+                        assoc.getChildNode().getNodePair());
+            }
+        }
+        resultsCallback.done();
     }
     
     /**
@@ -3731,7 +3677,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
 
     private class CycleCallBack implements ChildAssocRefQueryCallback
     {
-        final Set<Long> nodeIds = new HashSet<Long>(97);
+        final Set<Long> nodeIds = new HashSet<>(97);
         CyclicChildRelationshipException toThrow;
 
         @Override
@@ -3789,11 +3735,11 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     public List<Path> getPaths(Pair<Long, NodeRef> nodePair, boolean primaryOnly) throws InvalidNodeRefException
     {
         // create storage for the paths - only need 1 bucket if we are looking for the primary path
-        List<Path> paths = new ArrayList<Path>(primaryOnly ? 1 : 10);
+        List<Path> paths = new ArrayList<>(primaryOnly ? 1 : 10);
         // create an empty current path to start from
         Path currentPath = new Path();
         // create storage for touched associations
-        Stack<Long> assocIdStack = new Stack<Long>();
+        Stack<Long> assocIdStack = new Stack<>();
         
         // call recursive method to sort it out
         prependPaths(nodePair, null, currentPath, paths, assocIdStack, primaryOnly);
@@ -3831,7 +3777,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         // Remember the items already deleted in inner transactions
         final Set<Pair<Long, NodeRef>> lostNodePairs = TransactionalResourceHelper.getSet(KEY_LOST_NODE_PAIRS);
         final Set<Long> deletedAssocs = TransactionalResourceHelper.getSet(KEY_DELETED_ASSOCS);
-        AlfrescoTransactionSupport.bindListener(new TransactionListenerAdapter()
+        AlfrescoTransactionSupport.bindListener(new TransactionListener()
         {
             @Override
             public void afterRollback()
@@ -3845,40 +3791,40 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
                 if (transactionService.getAllowWrite())
                 {
                     // New transaction
-                    RetryingTransactionCallback<Void> callback = new RetryingTransactionCallback<Void>()
-                    {
-                        public Void execute() throws Throwable
+                    RetryingTransactionCallback<Void> callback = () -> {
+                        if (assocId == null)
                         {
-                            if (assocId == null)
+                            // 'child' with missing parent assoc => collect lost+found orphan child
+                            if (lostNodePairs.add(lostNodePair))
                             {
-                                // 'child' with missing parent assoc => collect lost+found orphan child
-                                if (lostNodePairs.add(lostNodePair))
-                                {
-                                    collectLostAndFoundNode(lostNodePair, lostName);
-                                    logger.error("ALF-13066: Orphan child node has been re-homed under lost_found: "
-                                            + lostNodePair);
-                                }
+                                collectLostAndFoundNode(lostNodePair, lostName);
+                                logger.error(
+                                    "ALF-13066: Orphan child node has been re-homed under lost_found: "
+                                    + lostNodePair);
                             }
-                            else
-                            {
-                                // 'child' with deleted parent assoc => delete invalid parent assoc and if primary then
-                                // collect lost+found orphan child
-                                if (deletedAssocs.add(assocId))
-                                {
-                                    deleteChildAssoc(assocId); // Can't use caching version or may hit infinite loop
-                                    logger.error("ALF-12358: Deleted node - removed child assoc: " + assocId);
-                                }
-                                
-                                if (orphanChild && lostNodePairs.add(lostNodePair))
-                                {
-                                    collectLostAndFoundNode(lostNodePair, lostName);
-                                    logger.error("ALF-12358: Orphan child node has been re-homed under lost_found: "
-                                            + lostNodePair);
-                                }
-                            }
-                            
-                            return null;
                         }
+                        else
+                        {
+                            // 'child' with deleted parent assoc => delete invalid parent assoc and if primary then
+                            // collect lost+found orphan child
+                            if (deletedAssocs.add(assocId))
+                            {
+                                deleteChildAssoc(
+                                    assocId); // Can't use caching version or may hit infinite loop
+                                logger.error(
+                                    "ALF-12358: Deleted node - removed child assoc: " + assocId);
+                            }
+
+                            if (orphanChild && lostNodePairs.add(lostNodePair))
+                            {
+                                collectLostAndFoundNode(lostNodePair, lostName);
+                                logger.error(
+                                    "ALF-12358: Orphan child node has been re-homed under lost_found: "
+                                    + lostNodePair);
+                            }
+                        }
+
+                        return null;
                     };
                     transactionService.getRetryingTransactionHelper().doInTransaction(callback, false, true);
                 }
@@ -3928,7 +3874,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         Pair<Long, NodeRef> rootNodePair = getRootNode(storeRef);
         Long rootParentNodeId = rootNodePair.getFirst();
         
-        final List<Pair<Long, NodeRef>> nodes = new ArrayList<Pair<Long, NodeRef>>(1);
+        final List<Pair<Long, NodeRef>> nodes = new ArrayList<>(1);
         NodeDAO.ChildAssocRefQueryCallback callback = new NodeDAO.ChildAssocRefQueryCallback()
         {
             public boolean handle(
@@ -3959,7 +3905,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             {
             }
         };
-        Set<QName> assocTypeQNames = new HashSet<QName>(1);
+        Set<QName> assocTypeQNames = new HashSet<>(1);
         assocTypeQNames.add(ContentModel.ASSOC_LOST_AND_FOUND);
         getChildAssocs(rootParentNodeId, assocTypeQNames, callback);
         
@@ -4030,13 +3976,13 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         {
             // We've changed stores
             Pair<Long, NodeRef> rootNodePair = getRootNode(currentStoreRef);
-            currentRootNodePair = new Pair<StoreRef, NodeRef>(currentStoreRef, rootNodePair.getSecond());
+            currentRootNodePair = new Pair<>(currentStoreRef, rootNodePair.getSecond());
         }
         
         // get the parent associations of the given node
         ParentAssocsInfo parentAssocInfo = getParentAssocsCached(currentNodeId); // note: currently may throw NotLiveNodeException
         // bulk load parents as we are certain to hit them in the next call
-        ArrayList<Long> toLoad = new ArrayList<Long>(parentAssocInfo.getParentAssocs().size());
+        ArrayList<Long> toLoad = new ArrayList<>(parentAssocInfo.getParentAssocs().size());
         for(Map.Entry<Long, ChildAssocEntity> entry : parentAssocInfo.getParentAssocs().entrySet())
         {
             toLoad.add(entry.getValue().getParentNode().getId());
@@ -4112,9 +4058,9 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             // prepend element
             path.prepend(element);
             // get parent node pair
-            Pair<Long, NodeRef> parentNodePair = new Pair<Long, NodeRef>(
-                    assoc.getParentNode().getId(),
-                    assocRef.getParentRef());
+            Pair<Long, NodeRef> parentNodePair = new Pair<>(
+                assoc.getParentNode().getId(),
+                assocRef.getParentRef());
 
             // does the association already exist in the stack
             if (assocIdStack.contains(assocId))
@@ -4171,9 +4117,9 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             this.size = size;
             this.maxParentCount = size * limitFactor;
             final int mapSize = size * 2;
-            this.cache = new HashMap<Pair <Long, String>, ParentAssocsInfo>(mapSize);
-            this.nextKeys = new HashMap<Pair <Long, String>, Pair <Long, String>>(mapSize);
-            this.previousKeys = new HashMap<Pair <Long, String>, Pair <Long, String>>(mapSize);
+            this.cache = new HashMap<>(mapSize);
+            this.nextKeys = new HashMap<>(mapSize);
+            this.previousKeys = new HashMap<>(mapSize);
         }
 
         private ParentAssocsInfo get(Pair <Long, String> cacheKey)
@@ -4304,7 +4250,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     private ParentAssocsInfo getParentAssocsCached(Long nodeId)
     {
         Node node = getNodeNotNull(nodeId, false);
-        Pair<Long, String> cacheKey = new Pair<Long, String>(nodeId, node.getTransaction().getChangeTxnId());
+        Pair<Long, String> cacheKey = new Pair<>(nodeId, node.getTransaction().getChangeTxnId());
         ParentAssocsInfo value = parentAssocsCache.get(cacheKey);
         if (value == null)
         {
@@ -4333,7 +4279,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     private void setParentAssocsCached(Long nodeId, ParentAssocsInfo parentAssocs)
     {
         Node node = getNodeNotNull(nodeId, false);
-        Pair<Long, String> cacheKey = new Pair<Long, String>(nodeId, node.getTransaction().getChangeTxnId());
+        Pair<Long, String> cacheKey = new Pair<>(nodeId, node.getTransaction().getChangeTxnId());
         parentAssocsCache.put(cacheKey, parentAssocs);
     }
     
@@ -4349,11 +4295,11 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         {
             return;
         }
-        Pair<Long, String> cacheKey = new Pair<Long, String>(from.getId(), fromTransactionId);
+        Pair<Long, String> cacheKey = new Pair<>(from.getId(), fromTransactionId);
         ParentAssocsInfo cacheEntry = parentAssocsCache.get(cacheKey);
         if (cacheEntry != null)
         {
-            parentAssocsCache.put(new Pair<Long, String>(from.getId(), toTransactionId), cacheEntry);
+            parentAssocsCache.put(new Pair<>(from.getId(), toTransactionId), cacheEntry);
         }
     }
     
@@ -4365,13 +4311,13 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         // Invalidate both the node and current transaction ID, just in case
         Long nodeId = node.getId();
         String nodeTransactionId = node.getTransaction().getChangeTxnId();
-        parentAssocsCache.remove(new Pair<Long, String>(nodeId, nodeTransactionId));
+        parentAssocsCache.remove(new Pair<>(nodeId, nodeTransactionId));
         if (AlfrescoTransactionSupport.getTransactionReadState() == TxnReadState.TXN_READ_WRITE)
         {
             String currentTransactionId = getCurrentTransaction().getChangeTxnId();
             if (!currentTransactionId.equals(nodeTransactionId))
             {
-                parentAssocsCache.remove(new Pair<Long, String>(nodeId, currentTransactionId));
+                parentAssocsCache.remove(new Pair<>(nodeId, currentTransactionId));
             }
         }                        
     }
@@ -4450,7 +4396,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             }
         }
         // Now recurse on all ancestors in the cache
-        Set<Long> ancestors = new TreeSet<Long>();
+        Set<Long> ancestors = new TreeSet<>();
         for (Long nodeId : nodeIds)
         {
             findCachedAncestors(nodeId, ancestors);
@@ -4472,7 +4418,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         {
             return; // Not in cache yet - will load in due course
         }
-        Pair<Long, String> cacheKey = new Pair<Long, String>(nodeId, node.getTransaction().getChangeTxnId());
+        Pair<Long, String> cacheKey = new Pair<>(nodeId, node.getTransaction().getChangeTxnId());
         ParentAssocsInfo value = parentAssocsCache.get(cacheKey);
         if (value == null)
         {
@@ -4520,7 +4466,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         int missingCacheEntryCount = 0;
         boolean forceBatch = false;
         
-        List<Long> batchLoadNodeIds = new ArrayList<Long>(nodeIds.size());
+        List<Long> batchLoadNodeIds = new ArrayList<>(nodeIds.size());
         for (Long nodeId : nodeIds)
         {
             if (!forceBatch)
@@ -4588,7 +4534,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         boolean forceBatch = false;
 
         // Group the nodes by store so that we don't *have* to eagerly join to store to get query performance
-        Map<StoreRef, List<String>> uuidsByStore = new HashMap<StoreRef, List<String>>(3);
+        Map<StoreRef, List<String>> uuidsByStore = new HashMap<>(3);
         for (NodeRef nodeRef : nodeRefs)
         {
             if (!forceBatch)
@@ -4614,7 +4560,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
             List<String> uuids = (List<String>) uuidsByStore.get(storeRef);
             if (uuids == null)
             {
-                uuids = new ArrayList<String>(nodeRefs.size());
+                uuids = new ArrayList<>(nodeRefs.size());
                 uuidsByStore.put(storeRef, uuids);
             }
             uuids.add(nodeRef.getId());
@@ -4643,7 +4589,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         Long storeId = store.getId();
         
         int batchSize = 256;
-        SortedSet<String> batch = new TreeSet<String>();
+        SortedSet<String> batch = new TreeSet<>();
         for (String uuid : uuids)
         {
             batch.add(uuid);
@@ -4666,7 +4612,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     private void cacheNodesBatch(List<Long> nodeIds)
     {
         int batchSize = 256;
-        SortedSet<Long> batch = new TreeSet<Long>();
+        SortedSet<Long> batch = new TreeSet<>();
         for (Long nodeId : nodeIds)
         {
             batch.add(nodeId);
@@ -4692,9 +4638,9 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
     private void cacheNodesNoBatch(List<Node> nodes)
     {
         // Get the nodes
-        SortedSet<Long> aspectNodeIds = new TreeSet<Long>();
-        SortedSet<Long> propertiesNodeIds = new TreeSet<Long>();
-        Map<Long, NodeVersionKey> nodeVersionKeysFromCache = new HashMap<Long, NodeVersionKey>(nodes.size()*2);    // Keep for quick lookup
+        SortedSet<Long> aspectNodeIds = new TreeSet<>();
+        SortedSet<Long> propertiesNodeIds = new TreeSet<>();
+        Map<Long, NodeVersionKey> nodeVersionKeysFromCache = new HashMap<>(nodes.size() * 2);    // Keep for quick lookup
         for (Node node : nodes)
         {
             Long nodeId = node.getId();
@@ -4730,7 +4676,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         // Cache the absence of aspects too!
         for (Long nodeId: aspectNodeIds)
         {
-            setNodeAspectsCached(nodeId, Collections.<QName>emptySet());
+            setNodeAspectsCached(nodeId, Collections.emptySet());
         }
 
         // First ensure all content data are pre-cached, so we don't have to load them individually when converting properties
@@ -4792,7 +4738,7 @@ public abstract class AbstractNodeDAOImpl implements NodeDAO, BatchingDAO
         Long storeId = (storeRef == null) ? null : getStoreNotNull(storeRef).getId();
         List<NodeEntity> nodes = selectTxnChanges(txnId, storeId);
         // Convert
-        List<NodeRef.Status> nodeStatuses = new ArrayList<NodeRef.Status>(nodes.size());
+        List<NodeRef.Status> nodeStatuses = new ArrayList<>(nodes.size());
         for (NodeEntity node : nodes)
         {
             nodeStatuses.add(node.getNodeStatus(qnameDAO));

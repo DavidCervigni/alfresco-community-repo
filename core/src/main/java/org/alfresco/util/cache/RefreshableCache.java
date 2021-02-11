@@ -10,12 +10,12 @@ public interface RefreshableCache<T>
      * 
      * @return T
      */
-    public T get(String key);
+     T get(String key);
     
     /**
      * Refresh the cache asynchronously.
      */
-    public void refresh(String key);
+    void refresh(String key);
 
     /**
      * Register to be informed when the cache is updated in the background.

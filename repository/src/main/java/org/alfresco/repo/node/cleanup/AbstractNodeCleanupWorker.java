@@ -25,6 +25,8 @@
  */
 package org.alfresco.repo.node.cleanup;
 
+import static org.alfresco.service.namespace.NamespaceService.SYSTEM_MODEL_1_0_URI;
+
 import java.util.Collections;
 import java.util.List;
 
@@ -54,28 +56,20 @@ import org.apache.commons.logging.LogFactory;
 public abstract class AbstractNodeCleanupWorker implements NodeCleanupWorker
 {
     /** Lock key: system:NodeCleanup */
-    private static final QName LOCK = QName.createQName(NamespaceService.SYSTEM_MODEL_1_0_URI, "NodeCleanup");
+    private static final QName LOCK = QName.createQName(SYSTEM_MODEL_1_0_URI, "NodeCleanup");
     /** Default Lock time to live: 1 minute */
     private static final long LOCK_TTL = 60*1000L;
-    
-    protected final Log logger;
-    
+
+    protected final Log logger = LogFactory.getLog(getClass());
+
     private NodeCleanupRegistry registry;
     protected TransactionService transactionService;
     protected JobLockService jobLockService;
     protected DbNodeServiceImpl dbNodeService;
     protected NodeDAO nodeDAO;
-    
-    private ThreadLocal<String> lockToken = new ThreadLocal<String>();
-    private VmShutdownListener shutdownListener = new VmShutdownListener("NodeCleanup");
-    
-    /**
-     * Default constructor
-     */
-    public AbstractNodeCleanupWorker()
-    {
-        logger = LogFactory.getLog(this.getClass());
-    }
+
+    private final ThreadLocal<String> lockToken        = new ThreadLocal<>();
+    private final VmShutdownListener  shutdownListener = new VmShutdownListener("NodeCleanup");
     
     public void setRegistry(NodeCleanupRegistry registry)
     {
@@ -142,7 +136,7 @@ public abstract class AbstractNodeCleanupWorker implements NodeCleanupWorker
                 StringBuilder sb = new StringBuilder(1024);
                 StackTraceUtil.buildStackTrace(
                         "Node cleanup failed: " +
-                        "   Worker: " + this.getClass().getName() + "\n" +
+                        "   Worker: " + getClass().getName() + "\n" +
                         "   Error:  " + e.getMessage(),
                         e.getStackTrace(),
                         sb,
@@ -152,7 +146,7 @@ public abstract class AbstractNodeCleanupWorker implements NodeCleanupWorker
             StringBuilder sb = new StringBuilder(1024);
             StackTraceUtil.buildStackTrace(
                 "Node cleanup failed: " +
-                "   Worker: " + this.getClass().getName() + "\n" +
+                "   Worker: " + getClass().getName() + "\n" +
                 "   Error:  " + e.getMessage(),
                 e.getStackTrace(),
                 sb,
@@ -161,7 +155,7 @@ public abstract class AbstractNodeCleanupWorker implements NodeCleanupWorker
         }
         finally
         {
-            String token = this.lockToken.get();
+            String token = lockToken.get();
             if (token != null)
             {
                 jobLockService.releaseLock(token, LOCK);
@@ -171,19 +165,15 @@ public abstract class AbstractNodeCleanupWorker implements NodeCleanupWorker
     
     private List<String> doCleanAsSystem()
     {
-        final RunAsWork<List<String>> doCleanRunAs = new RunAsWork<List<String>>()
-        {
-            public List<String> doWork() throws Exception
+        final RunAsWork<List<String>> doCleanRunAs = () -> {
+            try
             {
-                try
-                {
-                    return doCleanInternal();
-                }
-                catch (Throwable e)
-                {
-                    logger.error(e);
-                    return Collections.emptyList();
-                }
+                return doCleanInternal();
+            }
+            catch (Throwable e)
+            {
+                logger.error(e);
+                return Collections.emptyList();
             }
         };
         return AuthenticationUtil.runAs(doCleanRunAs, AuthenticationUtil.getSystemUserName());
@@ -194,7 +184,7 @@ public abstract class AbstractNodeCleanupWorker implements NodeCleanupWorker
      */
     protected void refreshLock() throws LockAcquisitionException
     {
-        String token = this.lockToken.get();
+        final String token = lockToken.get();
         if (token != null && !shutdownListener.isVmShuttingDown())
         {
             // We had a lock token AND the VM is still going

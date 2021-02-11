@@ -35,7 +35,7 @@ import org.alfresco.repo.content.ContentServicePolicies;
 import org.alfresco.repo.policy.JavaBehaviour;
 import org.alfresco.repo.policy.PolicyComponent;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
 import org.alfresco.service.cmr.repository.ContentData;
 import org.alfresco.service.cmr.repository.NodeRef;
@@ -58,7 +58,7 @@ import org.springframework.beans.factory.InitializingBean;
  * @deprecated The thumbnails code is being moved out of the codebase and replaced by the new async RenditionService2 or other external libraries.
  */
 @Deprecated
-public class SimpleThumbnailer extends TransactionListenerAdapter implements
+public class SimpleThumbnailer implements TransactionListener,
         ContentServicePolicies.OnContentUpdatePolicy, InitializingBean
 {
 

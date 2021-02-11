@@ -33,6 +33,7 @@ import java.util.List;
  * @author Derek Hulley
  * @since 2.2 SP2
  */
+@FunctionalInterface
 public interface NodeCleanupWorker
 {
     /**

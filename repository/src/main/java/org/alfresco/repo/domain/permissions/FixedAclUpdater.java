@@ -51,7 +51,6 @@ import org.alfresco.repo.security.permissions.PermissionServicePolicies;
 import org.alfresco.repo.security.permissions.PermissionServicePolicies.OnInheritPermissionsDisabled;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
 import org.alfresco.service.cmr.repository.NodeRef;
 import org.alfresco.service.cmr.repository.StoreRef;
 import org.alfresco.service.namespace.NamespaceService;
@@ -59,6 +58,7 @@ import org.alfresco.service.namespace.QName;
 import org.alfresco.service.transaction.TransactionService;
 import org.alfresco.util.Pair;
 import org.alfresco.util.PolicyIgnoreUtil;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.BeansException;
@@ -72,7 +72,7 @@ import org.springframework.context.ApplicationContextAware;
  * @author sglover
  * @since 4.2.7
  */
-public class FixedAclUpdater extends TransactionListenerAdapter implements ApplicationContextAware
+public class FixedAclUpdater implements TransactionListener, ApplicationContextAware
 {
     private static final Log log = LogFactory.getLog(FixedAclUpdater.class);
     private static final Set<QName> PENDING_FIX_ACL_ASPECT_PROPS = pendingFixAclAspectProps();

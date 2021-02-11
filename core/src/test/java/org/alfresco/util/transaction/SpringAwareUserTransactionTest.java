@@ -293,7 +293,6 @@ public class SpringAwareUserTransactionTest extends TestCase
         {
             UserTransaction txn = getTxn();
             txn.begin();
-            txn = null;
         }
     }
     
@@ -361,7 +360,7 @@ public class SpringAwareUserTransactionTest extends TestCase
         checkNoStatusOnThread();
     }
     
-    private static class TestTransactionListener extends TransactionListenerAdapter
+    private static class TestTransactionListener implements TransactionListener
     {
         private final String name;
         private final StringBuffer buffer;
@@ -410,8 +409,8 @@ public class SpringAwareUserTransactionTest extends TestCase
     @SuppressWarnings("serial")
     private static class DummyTransactionManager extends AbstractPlatformTransactionManager
     {
-        private int status = Status.STATUS_NO_TRANSACTION;
-        private Object txn = new Object();
+        private       int    status = Status.STATUS_NO_TRANSACTION;
+        private final Object txn    = new Object();
         
         /**
          * @return Returns one of the {@link Status Status.STATUS_XXX} constants
@@ -450,8 +449,8 @@ public class SpringAwareUserTransactionTest extends TestCase
     private static class FailingTransactionManager extends AbstractPlatformTransactionManager
     {
         private static final long serialVersionUID = 1L;
-        private int status = Status.STATUS_NO_TRANSACTION;
-        private Object txn = new Object();
+        private       int    status = Status.STATUS_NO_TRANSACTION;
+        private final Object txn    = new Object();
         
         /**
          * @return Returns one of the {@link Status Status.STATUS_XXX} constants

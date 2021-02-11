@@ -26,7 +26,6 @@
 package org.alfresco.repo.rawevents;
 
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
 import org.apache.camel.ExchangePattern;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -120,7 +119,7 @@ public class TransactionAwareEventProducer extends AbstractEventProducer
         }
     }
 
-    private class TransactionListener extends TransactionListenerAdapter implements org.alfresco.repo.transaction.TransactionListener
+    private class TransactionListener implements org.alfresco.util.transaction.TransactionListener
     {
         private final String id;
 
@@ -149,11 +148,6 @@ public class TransactionAwareEventProducer extends AbstractEventProducer
                     // consume exception
                 }
             }
-        }
-
-        @Override
-        public void flush()
-        {
         }
 
         @Override

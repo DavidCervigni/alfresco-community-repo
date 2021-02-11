@@ -39,8 +39,6 @@ import java.util.Set;
 import java.util.StringTokenizer;
 
 import org.alfresco.error.AlfrescoRuntimeException;
-import org.alfresco.sync.events.types.Event;
-import org.alfresco.sync.events.types.UserManagementEvent;
 import org.alfresco.model.ContentModel;
 import org.alfresco.query.CannedQueryFactory;
 import org.alfresco.query.CannedQueryResults;
@@ -50,8 +48,6 @@ import org.alfresco.repo.action.executer.MailActionExecuter;
 import org.alfresco.repo.cache.SimpleCache;
 import org.alfresco.repo.cache.TransactionalCache;
 import org.alfresco.repo.domain.permissions.AclDAO;
-import org.alfresco.sync.repo.events.EventPreparator;
-import org.alfresco.sync.repo.events.EventPublisher;
 import org.alfresco.repo.node.NodeServicePolicies;
 import org.alfresco.repo.node.NodeServicePolicies.BeforeCreateNodePolicy;
 import org.alfresco.repo.node.NodeServicePolicies.BeforeDeleteNodePolicy;
@@ -69,7 +65,7 @@ import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport.TxnReadState;
 import org.alfresco.repo.transaction.RetryingTransactionHelper;
 import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.repo.transaction.TransactionalResourceHelper;
 import org.alfresco.service.ServiceRegistry;
 import org.alfresco.service.cmr.action.Action;
@@ -102,6 +98,10 @@ import org.alfresco.service.namespace.NamespaceService;
 import org.alfresco.service.namespace.QName;
 import org.alfresco.service.namespace.RegexQNamePattern;
 import org.alfresco.service.transaction.TransactionService;
+import org.alfresco.sync.events.types.Event;
+import org.alfresco.sync.events.types.UserManagementEvent;
+import org.alfresco.sync.repo.events.EventPreparator;
+import org.alfresco.sync.repo.events.EventPublisher;
 import org.alfresco.util.EqualsHelper;
 import org.alfresco.util.GUID;
 import org.alfresco.util.ModelUtil;
@@ -112,12 +112,14 @@ import org.alfresco.util.registry.NamedObjectRegistry;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
-public class PersonServiceImpl extends TransactionListenerAdapter implements PersonService,
-                                                                             NodeServicePolicies.BeforeCreateNodePolicy,
-                                                                             NodeServicePolicies.OnCreateNodePolicy,
-                                                                             NodeServicePolicies.BeforeDeleteNodePolicy,
-                                                                             NodeServicePolicies.OnUpdatePropertiesPolicy
-                                                                             
+public class PersonServiceImpl implements
+    TransactionListener,
+    PersonService,
+    NodeServicePolicies.BeforeCreateNodePolicy,
+    NodeServicePolicies.OnCreateNodePolicy,
+    NodeServicePolicies.BeforeDeleteNodePolicy,
+    NodeServicePolicies.OnUpdatePropertiesPolicy
+
 {
     private static Log logger = LogFactory.getLog(PersonServiceImpl.class);
     
@@ -686,34 +688,30 @@ public class PersonServiceImpl extends TransactionListenerAdapter implements Per
             return;
         }
         
-        RetryingTransactionCallback<Object> processDuplicateWork = new RetryingTransactionCallback<Object>()
-        {
-            public Object execute() throws Throwable
+        RetryingTransactionCallback<Object> processDuplicateWork = () -> {
+            if (duplicateMode.equalsIgnoreCase(SPLIT))
             {
-                if (duplicateMode.equalsIgnoreCase(SPLIT))
-                {
-                        logger.info("Splitting " + postTxnDuplicates.size() + " duplicate person objects.");
-                    // Allow UIDs to be updated in this transaction
-                    AlfrescoTransactionSupport.bindResource(KEY_ALLOW_UID_UPDATE, Boolean.TRUE);
-                    split(postTxnDuplicates);
-                        logger.info("Split " + postTxnDuplicates.size() + " duplicate person objects.");
-                }
-                else if (duplicateMode.equalsIgnoreCase(DELETE))
-                {
-                    delete(postTxnDuplicates);
-                    logger.info("Deleted duplicate person objects");
-                }
-                else
-                {
-                    if (logger.isDebugEnabled())
-                    {
-                        logger.debug("Duplicate person objects exist");
-                    }
-                }
-                
-                // Done
-                return null;
+                    logger.info("Splitting " + postTxnDuplicates.size() + " duplicate person objects.");
+                // Allow UIDs to be updated in this transaction
+                AlfrescoTransactionSupport.bindResource(KEY_ALLOW_UID_UPDATE, Boolean.TRUE);
+                split(postTxnDuplicates);
+                    logger.info("Split " + postTxnDuplicates.size() + " duplicate person objects.");
             }
+            else if (duplicateMode.equalsIgnoreCase(DELETE))
+            {
+                delete(postTxnDuplicates);
+                logger.info("Deleted duplicate person objects");
+            }
+            else
+            {
+                if (logger.isDebugEnabled())
+                {
+                    logger.debug("Duplicate person objects exist");
+                }
+            }
+
+            // Done
+            return null;
         };
         transactionService.getRetryingTransactionHelper().doInTransaction(processDuplicateWork, false, true);
     }
@@ -883,23 +881,18 @@ public class PersonServiceImpl extends TransactionListenerAdapter implements Per
     
     private NodeRef createMissingPersonAsSystem(final String userName, final boolean autoCreateHomeFolder)
     {
-        return AuthenticationUtil.runAsSystem(new AuthenticationUtil.RunAsWork<NodeRef>()
-        {
-            @Override
-            public NodeRef doWork() throws Exception
+        return AuthenticationUtil.runAsSystem(() -> {
+            HashMap<QName, Serializable> properties = getDefaultProperties(userName);
+            NodeRef person = createPerson(properties);
+
+            // The home folder will ONLY exist after the the person is created if
+            // homeFolderCreationEager == true
+            if (autoCreateHomeFolder && homeFolderCreationEager == false)
             {
-                HashMap<QName, Serializable> properties = getDefaultProperties(userName);
-                NodeRef person = createPerson(properties);
-
-                // The home folder will ONLY exist after the the person is created if
-                // homeFolderCreationEager == true
-                if (autoCreateHomeFolder && homeFolderCreationEager == false)
-                {
-                    makeHomeFolderIfRequired(person);
-                }
-
-                return person;
+                makeHomeFolderIfRequired(person);
             }
+
+            return person;
         });
     }
     
@@ -920,13 +913,9 @@ public class PersonServiceImpl extends TransactionListenerAdapter implements Per
                     // Note that the transaction will *always* be in read-only mode if the server read-only veto is there 
                     requiresNew = true;
                 }
-                txnHelper.doInTransaction(new RetryingTransactionCallback<Object>()
-                {
-                    public Object execute() throws Throwable
-                    {
-                        makeHomeFolderAsSystem(ref);
-                        return null;
-                    }
+                txnHelper.doInTransaction(() -> {
+                    makeHomeFolderAsSystem(ref);
+                    return null;
                 }, false, requiresNew);
             }
         }
@@ -934,14 +923,9 @@ public class PersonServiceImpl extends TransactionListenerAdapter implements Per
     
     private void makeHomeFolderAsSystem(final ChildAssociationRef childAssocRef)
     {
-        AuthenticationUtil.runAs(new AuthenticationUtil.RunAsWork<Object>()
-        {
-            @Override
-            public Object doWork() throws Exception
-            {
-                homeFolderManager.makeHomeFolder(childAssocRef);
-                return null;
-            }
+        AuthenticationUtil.runAs(() -> {
+            homeFolderManager.makeHomeFolder(childAssocRef);
+            return null;
         }, AuthenticationUtil.getSystemUserName());
     }
 
@@ -2092,14 +2076,9 @@ public class PersonServiceImpl extends TransactionListenerAdapter implements Per
         final String managedLastname  = (String)properties.get(ContentModel.PROP_LASTNAME);
         final String eventTType 	  = eventType;
         
-        eventPublisher.publishEvent(new EventPreparator(){
-            @Override
-            public Event prepareEvent(String user, String networkId, String transactionId)
-            {         
-            	return new UserManagementEvent(eventTType , transactionId, networkId,new Date().getTime(), 
-            			user, managedUsername,managedFirstname,managedLastname);
-            }
-        });
+        eventPublisher.publishEvent(
+            (user, networkId, transactionId) -> new UserManagementEvent(eventTType , transactionId, networkId,new Date().getTime(),
+                    user, managedUsername,managedFirstname,managedLastname));
     }
     
     /**

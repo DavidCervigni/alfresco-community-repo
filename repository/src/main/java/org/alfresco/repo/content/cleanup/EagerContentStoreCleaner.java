@@ -31,7 +31,7 @@ import java.util.Set;
 
 import org.alfresco.repo.content.ContentStore;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
-import org.alfresco.repo.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.repo.transaction.TransactionalResourceHelper;
 import org.alfresco.util.PropertyCheck;
 import org.apache.commons.logging.Log;
@@ -57,7 +57,7 @@ import org.apache.commons.logging.LogFactory;
  * <u><b>How backup policies are affected:</b></u><p/>
  * When restoring the system from a backup, the type of restore required is dictated by
  * the cleanup policy being enforced.  If eager cleanup is active, the system must<br/>
- * (a) have a listeners configured to backup the deleted content
+ * (a) have a listeners configured to backup the deleted contenTransactionListenerAdaptert
  *     e.g. {@link DeletedContentBackupCleanerListener}, or <br/>
  * (b) ensure consistent backups across the database and content stores: backup
  *     when the system is not running; use a DB-based content store.  This is the
@@ -69,7 +69,7 @@ import org.apache.commons.logging.LogFactory;
  * 
  * @author Derek Hulley
  */
-public class EagerContentStoreCleaner extends TransactionListenerAdapter
+public class EagerContentStoreCleaner implements TransactionListener
 {
     /**
      * Content URLs to delete once the transaction commits.
@@ -90,8 +90,8 @@ public class EagerContentStoreCleaner extends TransactionListenerAdapter
     
     public EagerContentStoreCleaner()
     {
-        this.stores = new ArrayList<ContentStore>(0);
-        this.listeners = new ArrayList<ContentStoreCleanerListener>(0);
+        this.stores = new ArrayList<>(0);
+        this.listeners = new ArrayList<>(0);
     }
 
     /**

@@ -51,7 +51,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  */
 public abstract class TransactionSupportUtil
 {
-    private static Log logger = LogFactory.getLog(TransactionSupportUtil.class);
+    private static final Log logger = LogFactory.getLog(TransactionSupportUtil.class);
     
     private static final int SESSION_SYNCHRONIZATION_ORDER = 800;
     /** resource key to store the transaction synchronizer instance */

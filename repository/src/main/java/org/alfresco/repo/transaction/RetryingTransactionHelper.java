@@ -25,6 +25,8 @@
  */
 package org.alfresco.repo.transaction;
 
+import static java.lang.Thread.sleep;
+
 import java.lang.reflect.Method;
 import java.sql.BatchUpdateException;
 import java.sql.SQLException;
@@ -138,15 +140,11 @@ public class RetryingTransactionHelper
         {
             // It's ok not to have the enterprise class available.
         }
-        catch (InstantiationException error)
+        catch (InstantiationException | IllegalAccessException error)
         {
             throw new AlfrescoRuntimeException("Unable to instantiate enterprise RetryExceptions.");
         }
-        catch (IllegalAccessException error)
-        {
-            throw new AlfrescoRuntimeException("Unable to instantiate enterprise RetryExceptions.");
-        }
-        
+
         // If no enterprise class found then create an empty list.
         if (retryExceptions == null)
         {
@@ -176,7 +174,7 @@ public class RetryingTransactionHelper
     private long maxExecutionMs;
 
     /** Map of transaction start times to thread stack traces. Only maintained when maxExecutionMs is set. */
-    private SortedMap <Long, List<Throwable>> txnsInProgress = new TreeMap<Long, List<Throwable>>();
+    private final SortedMap <Long, List<Throwable>> txnsInProgress = new TreeMap<>();
     
     /** The number of concurrently exeucting transactions. Only maintained when maxExecutionMs is set. */
     private int txnCount;
@@ -194,7 +192,7 @@ public class RetryingTransactionHelper
     /**
      * Random number generator for retry delays.
      */
-    private Random random;
+    private final Random random;
 
     /**
      * List of extra exceptions that should be retried.
@@ -214,7 +212,7 @@ public class RetryingTransactionHelper
          * @return              Return the result of the unit of work
          * @throws Throwable    This can be anything and will guarantee either a retry or a rollback
          */
-        public Result execute() throws Throwable;
+        Result execute() throws Throwable;
     };
 
     /**
@@ -410,12 +408,7 @@ public class RetryingTransactionHelper
                     }
                 }
                 // Record the start time and stack trace of the starting thread
-                List<Throwable> traces = txnsInProgress.get(startTime);
-                if (traces == null)
-                {
-                    traces = new LinkedList<Throwable>();
-                    txnsInProgress.put(startTime, traces);
-                }
+                List<Throwable> traces = txnsInProgress.computeIfAbsent(startTime, k -> new LinkedList<>());
                 stackTrace = new Exception("Stack trace");
                 traces.add(stackTrace);
                 ++txnCount;
@@ -490,9 +483,8 @@ public class RetryingTransactionHelper
                     // Somebody else 'owns' the transaction, so just rethrow.
                     if (txn == null)
                     {
-                        RuntimeException ee = AlfrescoRuntimeException.makeRuntimeException(
+                        throw AlfrescoRuntimeException.makeRuntimeException(
                                 e, "Exception from transactional callback: " + cb);
-                        throw ee;
                     }
                     if (logger.isDebugEnabled())
                     {
@@ -505,25 +497,22 @@ public class RetryingTransactionHelper
                                 e);
                     }
                     // Rollback if we can.
-                    if (txn != null)
+                    try
                     {
-                        try
+                        int txnStatus = txn.getStatus();
+                        // We can only rollback if a transaction was started (NOT NO_TRANSACTION) and
+                        // if that transaction has not been rolled back (NOT ROLLEDBACK).
+                        // If an exception occurs while the transaction is being created (e.g. no database connection)
+                        // then the status will be NO_TRANSACTION.
+                        if (txnStatus != Status.STATUS_NO_TRANSACTION && txnStatus != Status.STATUS_ROLLEDBACK)
                         {
-                            int txnStatus = txn.getStatus();
-                            // We can only rollback if a transaction was started (NOT NO_TRANSACTION) and
-                            // if that transaction has not been rolled back (NOT ROLLEDBACK).
-                            // If an exception occurs while the transaction is being created (e.g. no database connection)
-                            // then the status will be NO_TRANSACTION.
-                            if (txnStatus != Status.STATUS_NO_TRANSACTION && txnStatus != Status.STATUS_ROLLEDBACK)
-                            {
-                                txn.rollback();
-                            }
+                            txn.rollback();
                         }
-                        catch (Throwable e1)
-                        {
-                            // A rollback failure should not preclude a retry, but logging of the rollback failure is required
-                            logger.error("Rollback failure.  Normal retry behaviour will resume.", e1);
-                        }
+                    }
+                    catch (Throwable e1)
+                    {
+                        // A rollback failure should not preclude a retry, but logging of the rollback failure is required
+                        logger.error("Rollback failure.  Normal retry behaviour will resume.", e1);
                     }
                     if (e instanceof RollbackException)
                     {
@@ -564,14 +553,13 @@ public class RetryingTransactionHelper
                         }
                         try
                         {
-                            Thread.sleep(sleepInterval);
+                            sleep(sleepInterval);
                         }
-                        catch (InterruptedException ie)
+                        catch (InterruptedException ignore)
                         {
                             // Do nothing.
                         }
                         // Try again
-                        continue;
                     }
                     else
                     {
@@ -676,13 +664,7 @@ public class RetryingTransactionHelper
         }
         // Get the current transaction.  There might not be one if the transaction was not started using
         // this class i.e. it wasn't started with retries.
-        UserTransaction txn = (UserTransaction) AlfrescoTransactionSupport.getResource(KEY_ACTIVE_TRANSACTION);
-        if (txn == null)
-        {
-            return null;
-        }
-        // Done
-        return txn;
+        return AlfrescoTransactionSupport.getResource(KEY_ACTIVE_TRANSACTION);
     }
     
     private static class UserTransactionProtectionAdvise implements MethodBeforeAdvice

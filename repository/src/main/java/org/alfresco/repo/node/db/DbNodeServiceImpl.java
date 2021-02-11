@@ -98,7 +98,7 @@ import org.alfresco.util.GUID;
 import org.alfresco.util.Pair;
 import org.alfresco.util.ParameterCheck;
 import org.alfresco.util.PropertyMap;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.extensions.surf.util.I18NUtil;
@@ -3088,7 +3088,7 @@ public class DbNodeServiceImpl extends AbstractNodeServiceImpl implements Extens
      * @author Derek Hulley
      * @since 3.4.6
      */
-    private class AuditableTransactionListener extends TransactionListenerAdapter
+    private class AuditableTransactionListener implements TransactionListener
     {
         @Override
         public void beforeCommit(boolean readOnly)

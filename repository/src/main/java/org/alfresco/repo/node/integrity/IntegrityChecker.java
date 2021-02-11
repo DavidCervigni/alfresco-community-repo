@@ -770,22 +770,4 @@ public class IntegrityChecker
     {
 		checkIntegrity();  
     }
-
-	@Override
-    public void beforeCompletion()
-    {
-		// NO-OP
-    }
-
-	@Override
-    public void afterCommit()
-    {
-		// NO-OP
-    }
-
-	@Override
-    public void afterRollback()
-    {
-		// NO-OP
-    }
 }

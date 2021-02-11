@@ -50,7 +50,7 @@ import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.RetryingTransactionHelper;
 import org.alfresco.repo.transaction.RetryingTransactionHelper.RetryingTransactionCallback;
 import org.alfresco.util.TraceableThreadFactory;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -629,7 +629,7 @@ public class BatchProcessor<T> implements BatchMonitor
     /**
      * A callback that invokes a worker on a batch, optionally in a new transaction.
      */
-    class TxnCallback extends TransactionListenerAdapter implements RetryingTransactionCallback<Object>, Runnable
+    class TxnCallback implements TransactionListener, RetryingTransactionCallback<Object>, Runnable
     {
 
         /**
@@ -748,15 +748,6 @@ public class BatchProcessor<T> implements BatchMonitor
 
         public void run()
         {
-            try
-            {
-            }
-            catch (Throwable e)
-            {
-                BatchProcessor.this.logger.error("Failed to cleanup Worker after processing.", e);
-            }
-
-            
             final BatchProcessor<T>.TxnCallback callback = this;
             try
             {

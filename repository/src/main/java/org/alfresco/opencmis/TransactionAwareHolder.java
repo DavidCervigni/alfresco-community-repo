@@ -27,7 +27,7 @@ package org.alfresco.opencmis;
 
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
 import org.alfresco.repo.transaction.RetryingTransactionInterceptor;
-import org.alfresco.util.transaction.TransactionListenerAdapter;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.chemistry.opencmis.commons.spi.Holder;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -117,7 +117,7 @@ public class TransactionAwareHolder<T> extends Holder<T>
         }
     }
 
-    private class TxAwareHolderListener extends TransactionListenerAdapter
+    private class TxAwareHolderListener implements TransactionListener
     {
         @Override
         public void afterCommit()

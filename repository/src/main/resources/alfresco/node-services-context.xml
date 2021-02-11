@@ -71,12 +71,16 @@
          <value>org.alfresco.service.cmr.repository.NodeService</value>
       </property>
       <property name="defaultBinding">
-         <ref bean="mtAwareNodeService"></ref>
+         <ref bean="mtAwareNodeService"/>
       </property>
       <property name="redirectedProtocolBindings">
          <map>
-            <entry key="workspace"><ref bean="mtAwareNodeService"></ref></entry>
-            <entry key="versionStore"><ref bean="versionNodeService"></ref></entry>
+            <entry key="workspace">
+               <ref bean="mtAwareNodeService"/>
+            </entry>
+            <entry key="versionStore">
+               <ref bean="versionNodeService"/>
+            </entry>
          </map>
       </property>
    </bean>

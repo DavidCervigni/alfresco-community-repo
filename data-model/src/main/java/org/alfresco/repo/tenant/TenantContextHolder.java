@@ -36,9 +36,9 @@ import org.apache.commons.logging.LogFactory;
  */
 public class TenantContextHolder
 {
-    private static Log logger = LogFactory.getLog(TenantContextHolder.class);
+    private static final Log logger = LogFactory.getLog(TenantContextHolder.class);
     
-    private static final ThreadLocal<String> contextHolder = new ThreadLocal<String>();
+    private static final ThreadLocal<String> contextHolder = new ThreadLocal<>();
     
     public static String setTenantDomain(String tenantDomain)
     {
@@ -70,7 +70,7 @@ public class TenantContextHolder
     
     public static String getTenantDomain() 
     {
-        return (String)contextHolder.get();
+        return contextHolder.get();
     }
     
     public static void clearTenantDomain() 
