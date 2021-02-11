@@ -19,8 +19,10 @@
 package org.alfresco.util.transaction;
 
 
+import static java.lang.Thread.currentThread;
+import static java.util.Comparator.comparingInt;
+
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -85,10 +87,7 @@ public abstract class TransactionSupportUtil
             // need to lazily register synchronizations
             return TransactionSupportUtil.getSynchronization().getTransactionStartTime();
         }
-        else
-        {
-            return -1;   // not in a transaction
-        }
+        return -1;   // not in a transaction
     }
     
     /**
@@ -148,23 +147,21 @@ public abstract class TransactionSupportUtil
     {
         if (!TransactionSynchronizationManager.isSynchronizationActive())
         {
-            Thread currentThread = Thread.currentThread();
-            throw new AlfrescoRuntimeException("Transaction must be active and synchronization is required: " + currentThread);
+            throw new AlfrescoRuntimeException("Transaction must be active and synchronization is required: " + currentThread());
         }
 
         // a unique ID for the transaction is required
-        String txnId = GUID.generate();
-        TransactionSynchronizationImpl txnSynch = new TransactionSynchronizationImpl(txnId);
+        final String txnId = GUID.generate();
+        final TransactionSynchronizationImpl txnSynch = new TransactionSynchronizationImpl(txnId);
         TransactionSynchronizationManager.registerSynchronization(txnSynch);
         // save the synchronization to ensure we don't duplicate it
         // it might be required to create a nested resource holder
-        ResourcesHolder resourcesHolder = txnResources.get();
+        final ResourcesHolder resourcesHolder = txnResources.get();
         if (!resourcesHolder.resources.isEmpty())
         {
-            ResourcesHolder newResourcesHolder = new ResourcesHolder(resourcesHolder, new HashMap<>(3));
-            txnResources.set(newResourcesHolder);
+            txnResources.set(new ResourcesHolder(resourcesHolder, new HashMap<>(3)));
         }
-        Map<Object, Object> data = txnResources.get().resources;
+        final Map<Object, Object> data = txnResources.get().resources;
         data.put(RESOURCE_KEY_TXN_SYNCH, txnSynch);
         data.put(RESOURCE_KEY_TXN_ID, txnId);
         // done
@@ -183,15 +180,12 @@ public abstract class TransactionSupportUtil
      */
     private static TransactionSynchronizationImpl getSynchronization()
     {
-        Map<Object, Object> data = txnResources.get().resources;
-        if (data.get(RESOURCE_KEY_TXN_SYNCH) != null)
+        final Map<Object, Object> resources = txnResources.get().resources;
+        if (resources.get(RESOURCE_KEY_TXN_SYNCH) != null)
         {
-            return (TransactionSynchronizationImpl) data.get(RESOURCE_KEY_TXN_SYNCH);
+            return (TransactionSynchronizationImpl) resources.get(RESOURCE_KEY_TXN_SYNCH);
         }
-        else
-        {
-            return TransactionSupportUtil.registerSynchronization();
-        }
+        return TransactionSupportUtil.registerSynchronization();
     }
 
     /**
@@ -199,8 +193,8 @@ public abstract class TransactionSupportUtil
      */
     private static void suspendSynchronization()
     {
-        ResourcesHolder currentResourcesHolder = txnResources.get();
-        ResourcesHolder newResourcesHolder = new ResourcesHolder(currentResourcesHolder, new HashMap<>(3));
+        final ResourcesHolder currentResourcesHolder = txnResources.get();
+        final ResourcesHolder newResourcesHolder = new ResourcesHolder(currentResourcesHolder, new HashMap<>(3));
         txnResources.set(newResourcesHolder);
     }
 
@@ -210,10 +204,9 @@ public abstract class TransactionSupportUtil
      */
     private static void resumeSynchronization()
     {
-        ResourcesHolder currentResourcesHolder = txnResources.get();
-        ResourcesHolder previousResourcesHolder = currentResourcesHolder.previousResourceHolder;
-        if (currentResourcesHolder.resources.isEmpty() &&
-                previousResourcesHolder != null)
+        final ResourcesHolder currentResourcesHolder = txnResources.get();
+        final ResourcesHolder previousResourcesHolder = currentResourcesHolder.previousResourceHolder;
+        if (currentResourcesHolder.resources.isEmpty() && previousResourcesHolder != null)
         {
             txnResources.set(previousResourcesHolder);
         }
@@ -224,14 +217,14 @@ public abstract class TransactionSupportUtil
      */
     private static void clearResources()
     {
-        ResourcesHolder currentResourcesHolder = txnResources.get();
-        Map<Object, Object> txnData = currentResourcesHolder.resources;
+        final ResourcesHolder currentResourcesHolder = txnResources.get();
+        final Map<Object, Object> txnData = currentResourcesHolder.resources;
         txnData.clear();
         if (logger.isDebugEnabled())
         {
-            logger.debug("Clear txn resources for " + Thread.currentThread().getName());
+            logger.debug("Clear txn resources for " + currentThread().getName());
         }
-        ResourcesHolder previousResourcesHolder = currentResourcesHolder.previousResourceHolder;
+        final ResourcesHolder previousResourcesHolder = currentResourcesHolder.previousResourceHolder;
         if (previousResourcesHolder != null)
         {
             txnResources.set(previousResourcesHolder);
@@ -294,8 +287,10 @@ public abstract class TransactionSupportUtil
         {
             logger.debug("Bind Listener listener: " + listener + ", priority: " + priority);
         }
-        TransactionSynchronizationImpl synch = TransactionSupportUtil.getSynchronization();
-        return synch.addListener(listener, priority);
+
+        return TransactionSupportUtil
+            .getSynchronization()
+            .addListener(listener, priority);
     }
     
     /**
@@ -303,11 +298,10 @@ public abstract class TransactionSupportUtil
      */
     public static Set<TransactionListener> getListeners()
     {
-          // get the synchronization
-        TransactionSynchronizationImpl txnSynch = TransactionSupportUtil.getSynchronization();
-      
-        return txnSynch.getListenersIterable();
-        
+        // get the synchronization
+        return TransactionSupportUtil
+            .getSynchronization()
+            .getListenersIterable();
     }
 
     /**
@@ -350,7 +344,7 @@ public abstract class TransactionSupportUtil
         /**
          * priority to listeners
          */
-        private final Map<Integer, Set<TransactionListener>>priorityLookup = new HashMap<Integer, Set<TransactionListener>>();
+        private final Map<Integer, Set<TransactionListener>>priorityLookup = new HashMap<>();
           
         /**
          * Sets up the resource map
@@ -361,7 +355,7 @@ public abstract class TransactionSupportUtil
         {
             this.txnStartTime = System.currentTimeMillis();
             this.txnId = txnId;
-            priorityLookup.put(0, new LinkedHashSet<TransactionListener>(5));
+            priorityLookup.put(0, new LinkedHashSet<>(5));
         }
         
         public long getTransactionStartTime()
@@ -385,7 +379,7 @@ public abstract class TransactionSupportUtil
             }
             else
             {
-                Set<TransactionListener> listeners = new LinkedHashSet<TransactionListener>(5);
+                Set<TransactionListener> listeners = new LinkedHashSet<>(5);
                 priorityLookup.put(priority, listeners);
                 return listeners.add(listener);
             }
@@ -399,7 +393,7 @@ public abstract class TransactionSupportUtil
         private List<TransactionListener> getLevelZeroListenersIterable()
         {
             Set<TransactionListener>listeners = priorityLookup.get(0);
-            return new ArrayList<TransactionListener>(listeners);
+            return new ArrayList<>(listeners);
         }
         
         /**
@@ -407,7 +401,7 @@ public abstract class TransactionSupportUtil
          */
         private Set<TransactionListener> getListenersIterable()
         {
-            Set<TransactionListener> ret = new LinkedHashSet<TransactionListener>();
+            Set<TransactionListener> ret = new LinkedHashSet<>();
             Set<Entry<Integer, Set<TransactionListener>>> entries = priorityLookup.entrySet();
             
             for(Entry<Integer, Set<TransactionListener>> entry : entries)
@@ -483,7 +477,7 @@ public abstract class TransactionSupportUtil
             // Now run the != 0 listeners beforeCommit
             Set<Integer> priorities = priorityLookup.keySet();
             
-            SortedSet<Integer> sortedPriorities = new ConcurrentSkipListSet<Integer>(FORWARD_INTEGER_ORDER);
+            SortedSet<Integer> sortedPriorities = new ConcurrentSkipListSet<>(comparingInt(Integer::intValue));
             sortedPriorities.addAll(priorities);
             sortedPriorities.remove(0);    //  already done level 0 above
             
@@ -513,7 +507,7 @@ public abstract class TransactionSupportUtil
          */
         private void doBeforeCommit(boolean readOnly)
         {
-            doBeforeCommit(new HashSet<TransactionListener>(), readOnly);
+            doBeforeCommit(new HashSet<>(), readOnly);
         }
         
         /**
@@ -581,13 +575,13 @@ public abstract class TransactionSupportUtil
 
             Set<Integer> priorities = priorityLookup.keySet();
 
-            SortedSet<Integer> sortedPriorities = new ConcurrentSkipListSet<Integer>(REVERSE_INTEGER_ORDER);
+            SortedSet<Integer> sortedPriorities = new ConcurrentSkipListSet<>(comparingInt(Integer::intValue).reversed());
             sortedPriorities.addAll(priorities);
 
             // Need to run these in reverse order cache,lucene,listeners
             for(Integer priority : sortedPriorities)
             {
-                Set<TransactionListener> listeners = new HashSet<TransactionListener>(priorityLookup.get(priority));
+                Set<TransactionListener> listeners = new HashSet<>(priorityLookup.get(priority));
 
                 for(TransactionListener listener : listeners)
                 {
@@ -616,23 +610,4 @@ public abstract class TransactionSupportUtil
             TransactionSupportUtil.clearResources();
         }
     }
-    
-    static private Comparator<Integer> FORWARD_INTEGER_ORDER = new Comparator<Integer>()
-    {
-        @Override
-        public int compare(Integer arg0, Integer arg1)
-        {
-            return arg0.intValue() - arg1.intValue();
-        }
-    } ;
-    
-    static private Comparator<Integer> REVERSE_INTEGER_ORDER = new Comparator<Integer>()
-    {
-        @Override
-        public int compare(Integer arg0, Integer arg1)
-        {
-            return arg1.intValue() - arg0.intValue();
-        }
-    } ;
-
 }

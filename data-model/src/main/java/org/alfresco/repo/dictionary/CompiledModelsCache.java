@@ -30,8 +30,8 @@ import org.alfresco.repo.security.authentication.AuthenticationUtil.RunAsWork;
 import org.alfresco.repo.tenant.TenantService;
 import org.alfresco.util.cache.AbstractAsynchronouslyRefreshedCache;
 import org.alfresco.util.cache.RefreshableCacheEvent;
+import org.alfresco.util.cache.RefreshableCacheEventImpl;
 import org.alfresco.util.cache.RefreshableCacheListener;
-import org.alfresco.util.cache.RefreshableCacheRefreshedEvent;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -40,7 +40,7 @@ import org.apache.commons.logging.LogFactory;
  */
 public class CompiledModelsCache extends AbstractAsynchronouslyRefreshedCache<DictionaryRegistry>
 {
-    private static Log logger = LogFactory.getLog(CompiledModelsCache.class);
+    private static final Log logger = LogFactory.getLog(CompiledModelsCache.class);
 
     private DictionaryDAOImpl dictionaryDAO;
     private TenantService tenantService;
@@ -54,13 +54,9 @@ public class CompiledModelsCache extends AbstractAsynchronouslyRefreshedCache<Di
         }
 
         final String finalTenant = tenantId;
-        return AuthenticationUtil.runAs(new RunAsWork<DictionaryRegistry>()
-        {
-            public DictionaryRegistry doWork() throws Exception
-            {
-                return dictionaryDAO.initDictionaryRegistry(finalTenant);
-            }
-        }, tenantService.getDomainUser(AuthenticationUtil.getSystemUserName(), tenantId));
+        return AuthenticationUtil.runAs(
+            () -> dictionaryDAO.initDictionaryRegistry(finalTenant),
+            tenantService.getDomainUser(AuthenticationUtil.getSystemUserName(), tenantId));
     }
 
     /**
@@ -125,7 +121,7 @@ public class CompiledModelsCache extends AbstractAsynchronouslyRefreshedCache<Di
                                 ", key="+event.getKey());
                 }
                 
-                if (event instanceof RefreshableCacheRefreshedEvent &&
+                if (event instanceof RefreshableCacheEventImpl &&
                     event.getCacheId().equals(getCacheId()))
                 {
                     // notify registered listeners that dictionary has been initialised (population is complete).

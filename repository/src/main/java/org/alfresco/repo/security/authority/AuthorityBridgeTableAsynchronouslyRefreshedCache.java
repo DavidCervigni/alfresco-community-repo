@@ -49,7 +49,7 @@ import org.springframework.beans.factory.InitializingBean;
  * @author Andy
  * @since 4.1.3
  */
-public class AuthorityBridgeTableAsynchronouslyRefreshedCache extends  AbstractMTAsynchronouslyRefreshedCache<BridgeTable<String>> implements InitializingBean
+public class AuthorityBridgeTableAsynchronouslyRefreshedCache extends AbstractMTAsynchronouslyRefreshedCache<BridgeTable<String>> implements InitializingBean
 {
     private AuthorityBridgeDAO authorityBridgeDAO;
     private RetryingTransactionHelper retryingTransactionHelper;
@@ -93,27 +93,15 @@ public class AuthorityBridgeTableAsynchronouslyRefreshedCache extends  AbstractM
     @Override
     protected BridgeTable<String> buildCache(final String tenantId)
     {
-        return AuthenticationUtil.runAs(new RunAsWork<BridgeTable<String>>()
-        {
-            public BridgeTable<String> doWork() throws Exception
-            {
-                return retryingTransactionHelper.doInTransaction(new RetryingTransactionCallback<BridgeTable<String>>()
-                {
-                    @Override
-                    public BridgeTable<String> execute() throws Throwable
-                    {
-                        return doBuildCache(tenantId);
-                    }
-                }, true, false);
-
-            }
-        }, tenantAdminService.getDomainUser(AuthenticationUtil.getSystemUserName(), tenantId));
+        return AuthenticationUtil.runAs(() -> retryingTransactionHelper.doInTransaction(
+            () -> doBuildCache(tenantId), true, false),
+            tenantAdminService.getDomainUser(AuthenticationUtil.getSystemUserName(), tenantId));
     }
 
     private BridgeTable<String> doBuildCache(String tenantId)
     {
         List<AuthorityBridgeLink> links = authorityBridgeDAO.getAuthorityBridgeLinks();
-        BridgeTable<String> bridgeTable = new BridgeTable<String>();
+        BridgeTable<String> bridgeTable = new BridgeTable<>();
         try
         {
             for (AuthorityBridgeLink link : links)
@@ -133,20 +121,20 @@ public class AuthorityBridgeTableAsynchronouslyRefreshedCache extends  AbstractM
 
     private void checkCyclic(List<AuthorityBridgeLink> links)
     {
-        Map<String, Set<String>> parentsToChildren = new HashMap<String, Set<String>>();
+        Map<String, Set<String>> parentsToChildren = new HashMap<>();
         for (AuthorityBridgeLink link : links)
         {
             addToMap(parentsToChildren, link.getParentName(), link.getChildName());
         }
         
-        Map<String, Set<String>> removed = new HashMap<String, Set<String>>();
+        Map<String, Set<String>> removed = new HashMap<>();
         for (String parent : parentsToChildren.keySet())
         {
             if (logger.isDebugEnabled())
             {
                 logger.debug("Start checking from '" + parent + "'");
             }
-            Set<String> authorities = new HashSet<String>();
+            Set<String> authorities = new HashSet<>();
             authorities.add(parent);
             doCheck(parent, parentsToChildren, authorities, removed);
         }
@@ -160,35 +148,36 @@ public class AuthorityBridgeTableAsynchronouslyRefreshedCache extends  AbstractM
     private void doCheck(String parent, Map<String, Set<String>> parentsToChildren, Set<String> authorities,
             Map<String, Set<String>> removed)
     {
-        Set<String> children = parentsToChildren.get(parent);
-        if (children != null)
+        final Set<String> children = parentsToChildren.get(parent);
+        if (children == null)
         {
-            for (String child : children)
+            return;
+        }
+        for (String child : children)
+        {
+            if (logger.isDebugEnabled())
+            {
+                logger.debug("Check link from '" + parent + "' to '" + child + "'");
+            }
+            if (isRemoved(removed, parent, child))
             {
                 if (logger.isDebugEnabled())
                 {
-                    logger.debug("Check link from '" + parent + "' to '" + child + "'");
+                    logger.debug("Link from '" + parent + "' to '" + child + "' has been already removed");
                 }
-                if (isRemoved(removed, parent, child))
-                {
-                    if (logger.isDebugEnabled())
-                    {
-                        logger.debug("Link from '" + parent + "' to '" + child + "' has been already removed");
-                    }
-                    continue;
-                }
-                if (!authorities.add(child))
-                {
-                    addToMap(removed, parent, child);
-                    continue;
-                }
-                doCheck(child, parentsToChildren, authorities, removed);
-                authorities.remove(child);
+                continue;
             }
-            if (logger.isDebugEnabled())
+            if (!authorities.add(child))
             {
-                logger.debug("Children of '" + parent + "' were processed");
+                addToMap(removed, parent, child);
+                continue;
             }
+            doCheck(child, parentsToChildren, authorities, removed);
+            authorities.remove(child);
+        }
+        if (logger.isDebugEnabled())
+        {
+            logger.debug("Children of '" + parent + "' were processed");
         }
     }
 
@@ -203,7 +192,7 @@ public class AuthorityBridgeTableAsynchronouslyRefreshedCache extends  AbstractM
         Set<String> children = map.get(parent);
         if (children == null)
         {
-            children = new HashSet<String>();
+            children = new HashSet<>();
             children.add(child);
             map.put(parent, children);
         }
@@ -217,22 +206,17 @@ public class AuthorityBridgeTableAsynchronouslyRefreshedCache extends  AbstractM
     {
         // delete cyclic links in new transaction because
         // current cache refresh will be interrupted with AlfrescoRuntimeException
-        retryingTransactionHelper.doInTransaction(new RetryingTransactionCallback<Void>()
-        {
-            @Override
-            public Void execute() throws Throwable
+        retryingTransactionHelper.doInTransaction((RetryingTransactionCallback<Void>) () -> {
+            for (String parentName : removed.keySet())
             {
-                for (String parentName : removed.keySet())
+                for (String childName : removed.get(parentName))
                 {
-                    for (String childName : removed.get(parentName))
-                    {
-                        // do not refresh authorityBridgeTableCache
-                        authorityDAO.removeAuthority(parentName, childName, false);
-                        logger.error("Link from '" + parentName + "' to '" + childName +"' was removed to break cycle.");
-                    }
+                    // do not refresh authorityBridgeTableCache
+                    authorityDAO.removeAuthority(parentName, childName, false);
+                    logger.error("Link from '" + parentName + "' to '" + childName +"' was removed to break cycle.");
                 }
-                return null;
             }
+            return null;
         }, false, true);
     }
 

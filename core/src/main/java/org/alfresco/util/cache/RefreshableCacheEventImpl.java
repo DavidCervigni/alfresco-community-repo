@@ -18,19 +18,21 @@
  */
 package org.alfresco.util.cache;
 
+import java.util.Objects;
+
 /**
  * A generic event with the cache id and affected tenant
  * 
  * @author Andy
  */
-public abstract class AbstractRefreshableCacheEvent implements RefreshableCacheEvent
+public class RefreshableCacheEventImpl implements RefreshableCacheEvent
 {
     private static final long serialVersionUID = 1324638640132648062L;
 
-    private String cacheId;
-    private String key;
+    private final String cacheId;
+    private final String key;
 
-    AbstractRefreshableCacheEvent(String cacheId, String key)
+    RefreshableCacheEventImpl(final String cacheId, final String key)
     {
         this.cacheId = cacheId;
         this.key = key;
@@ -55,32 +57,18 @@ public abstract class AbstractRefreshableCacheEvent implements RefreshableCacheE
     }
 
     @Override
-    public int hashCode()
+    public boolean equals(Object o)
     {
-        final int prime = 31;
-        int result = 1;
-        result = prime * result + ((cacheId == null) ? 0 : cacheId.hashCode());
-        result = prime * result + ((key == null) ? 0 : key.hashCode());
-        return result;
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        RefreshableCacheEventImpl that = (RefreshableCacheEventImpl) o;
+        return Objects.equals(cacheId, that.cacheId) &&
+               Objects.equals(key, that.key);
     }
 
     @Override
-    public boolean equals(Object obj)
+    public int hashCode()
     {
-        if (this == obj) return true;
-        if (obj == null) return false;
-        if (getClass() != obj.getClass()) return false;
-        AbstractRefreshableCacheEvent other = (AbstractRefreshableCacheEvent) obj;
-        if (cacheId == null)
-        {
-            if (other.cacheId != null) return false;
-        }
-        else if (!cacheId.equals(other.cacheId)) return false;
-        if (key == null)
-        {
-            if (other.key != null) return false;
-        }
-        else if (!key.equals(other.key)) return false;
-        return true;
+        return Objects.hash(cacheId, key);
     }
 }

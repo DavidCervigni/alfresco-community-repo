@@ -245,8 +245,7 @@ public class DictionaryDAOImpl implements DictionaryDAO, NamespaceDAO,
     public QName putModel(M2Model model)
     {
         // the core registry is not yet initialised so put it in the core registry
-        QName ret = putModelImpl(model, true);
-        return ret;
+        return putModelImpl(model, true);
     }
 
     @Override
@@ -333,14 +332,11 @@ public class DictionaryDAOImpl implements DictionaryDAO, NamespaceDAO,
     @Override
     public TypeDefinition getType(QName typeName)
     {
-        TypeDefinition typeDef = null;
-
         if (typeName != null)
         {
-            typeDef = getTenantDictionaryRegistry().getType(typeName);
+            return getTenantDictionaryRegistry().getType(typeName);
         }
-
-        return typeDef;
+        return null;
     }
 
     @Override

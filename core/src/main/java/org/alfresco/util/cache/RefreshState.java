@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005-2013 Alfresco Software Limited.
+ * Copyright (C) 2005-2014 Alfresco Software Limited.
  *
  * This file is part of Alfresco
  *
@@ -18,25 +18,7 @@
  */
 package org.alfresco.util.cache;
 
-/**
- * Describes an entry that is stale in the cache
- * 
- * @author Andy
- *
- */
-public class RefreshableCacheRefreshEvent extends AbstractRefreshableCacheEvent
+enum RefreshState
 {
-    /**
-     * @param cacheId
-     */
-    RefreshableCacheRefreshEvent(String cacheId, String key)
-    {
-        super(cacheId, key);
-    }
-
-    /**
-     * 
-     */
-    private static final long serialVersionUID = -8011932788039835334L;
-
+    IDLE, WAITING, RUNNING, DONE
 }

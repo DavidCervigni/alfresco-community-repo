@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import org.alfresco.model.ContentModel;
@@ -1001,7 +1002,7 @@ public class RuleServiceImpl
     {
         ParameterCheck.mandatory("actionedUponNodeRef", actionedUponNodeRef);
         
-        List<PendingRuleData> pendingRules = (List<PendingRuleData>) AlfrescoTransactionSupport.getResource(KEY_RULES_PENDING);
+        List<PendingRuleData> pendingRules = AlfrescoTransactionSupport.getResource(KEY_RULES_PENDING);
         if (pendingRules != null)
         {
             boolean listUpdated = false;
@@ -1036,11 +1037,11 @@ public class RuleServiceImpl
             this.rulesEnabled(this.getOwningNodeRef(rule)) &&
             !this.disabledRules.contains(rule))
         {
-            PendingRuleData pendingRuleData = new PendingRuleData(actionableNodeRef, actionedUponNodeRef, rule, executeAtEnd);
+            PendingRuleData pendingRuleData = new PendingRuleData(actionableNodeRef,
+                actionedUponNodeRef, rule, executeAtEnd);
             pendingRuleData.setRunAsUser(AuthenticationUtil.getRunAsUser());
 
-            List<PendingRuleData> pendingRules =
-                (List<PendingRuleData>) AlfrescoTransactionSupport.getResource(KEY_RULES_PENDING);
+            List<PendingRuleData> pendingRules = AlfrescoTransactionSupport.getResource(KEY_RULES_PENDING);
             if (pendingRules == null)
             {
                 // bind pending rules to the current transaction
@@ -1109,7 +1110,7 @@ public class RuleServiceImpl
     {
         // get the transaction-local rules to execute
         List<PendingRuleData> pendingRules =
-                (List<PendingRuleData>) AlfrescoTransactionSupport.getResource(KEY_RULES_PENDING);
+            AlfrescoTransactionSupport.getResource(KEY_RULES_PENDING);
         // only execute if there are rules present
         if (pendingRules != null && !pendingRules.isEmpty())
         {
@@ -1144,13 +1145,9 @@ public class RuleServiceImpl
         if (AuthenticationUtil.getRunAsAuthentication() == null && pendingRule.getRunAsUser() != null)
         {
             // MNT-11670: runAsUser was set previously
-            AuthenticationUtil.runAs(new AuthenticationUtil.RunAsWork<Void>()
-            {
-                public Void doWork() throws Exception
-                {
-                    executePendingRuleImpl(pendingRule);
-                    return null;
-                }
+            AuthenticationUtil.runAs((AuthenticationUtil.RunAsWork<Void>) () -> {
+                executePendingRuleImpl(pendingRule);
+                return null;
             }, pendingRule.getRunAsUser());
         }
         else
@@ -1163,7 +1160,7 @@ public class RuleServiceImpl
     private void executePendingRuleImpl(PendingRuleData pendingRule) 
     {
         Set<ExecutedRuleData> executedRules =
-               (Set<ExecutedRuleData>) AlfrescoTransactionSupport.getResource(KEY_RULES_EXECUTED);
+            AlfrescoTransactionSupport.getResource(KEY_RULES_EXECUTED);
 
         NodeRef actionedUponNodeRef = pendingRule.getActionedUponNodeRef();
         Rule rule = pendingRule.getRule();
@@ -1186,13 +1183,7 @@ public class RuleServiceImpl
         }
         final NodeRef finalRuleNodeRef = ruleNodeRef;
         // update all associations and actions
-        rule = AuthenticationUtil.runAs(new AuthenticationUtil.RunAsWork<>()
-        {
-            public Rule doWork() throws Exception
-            {
-                return getRule(finalRuleNodeRef);
-            }
-        }, AuthenticationUtil.getSystemUserName());
+        rule = AuthenticationUtil.runAs(() -> getRule(finalRuleNodeRef), AuthenticationUtil.getSystemUserName());
 
         if (executedRules == null || canExecuteRule(executedRules, actionedUponNodeRef, rule))
         {
@@ -1201,13 +1192,9 @@ public class RuleServiceImpl
                 final Rule fRule = rule;
                 final NodeRef fActionedUponNodeRef = actionedUponNodeRef;
                 final Set<ExecutedRuleData> fExecutedRules = executedRules;
-                AuthenticationUtil.runAs(new AuthenticationUtil.RunAsWork<Void>()
-                {
-                    public Void doWork() throws Exception
-                    {
-                        executeRule(fRule, fActionedUponNodeRef, fExecutedRules);
-                        return null;
-                    }
+                AuthenticationUtil.runAs((AuthenticationUtil.RunAsWork<Void>) () -> {
+                    executeRule(fRule, fActionedUponNodeRef, fExecutedRules);
+                    return null;
                 }, AuthenticationUtil.getSystemUserName());
             }
             else
@@ -1374,9 +1361,8 @@ public class RuleServiceImpl
      * 
      * @author Roy Wetherall
      */
-    public class ExecutedRuleData
+    public static class ExecutedRuleData
     {
-
         protected NodeRef actionableNodeRef;
         protected Rule rule;
         
@@ -1395,32 +1381,21 @@ public class RuleServiceImpl
         {
             return rule;
         }
-        
+
         @Override
-        public int hashCode() 
+        public boolean equals(Object o)
         {
-            int i = actionableNodeRef.hashCode();
-            i = (i*37) + rule.hashCode();
-            return i;
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            ExecutedRuleData that = (ExecutedRuleData) o;
+            return Objects.equals(actionableNodeRef, that.actionableNodeRef) &&
+                   Objects.equals(rule, that.rule);
         }
-        
+
         @Override
-        public boolean equals(Object obj) 
+        public int hashCode()
         {
-            if (this == obj)
-            {
-                return true;
-            }
-            if (obj instanceof ExecutedRuleData)
-            {
-                ExecutedRuleData that = (ExecutedRuleData) obj;
-                return (this.actionableNodeRef.equals(that.actionableNodeRef) &&
-                        this.rule.equals(that.rule));
-            }
-            else
-            {
-                return false;
-            }
+            return Objects.hash(actionableNodeRef, rule);
         }
     }
 
@@ -1429,7 +1404,7 @@ public class RuleServiceImpl
      * 
      * @author Roy Wetherall
      */
-    private class PendingRuleData extends ExecutedRuleData
+    private static class PendingRuleData extends ExecutedRuleData
     {
         private NodeRef actionedUponNodeRef;
         private boolean executeAtEnd = false;
@@ -1495,20 +1470,16 @@ public class RuleServiceImpl
     public NodeRef getOwningNodeRef(final Rule rule)
     {
         // Run from system user: https://issues.alfresco.com/jira/browse/ALF-607
-        return AuthenticationUtil.runAs(new AuthenticationUtil.RunAsWork<>()
-        {
-            public NodeRef doWork() throws Exception
+        return AuthenticationUtil.runAs(() -> {
+            NodeRef result = null;
+
+            NodeRef ruleNodeRef = rule.getNodeRef();
+            if (ruleNodeRef != null)
             {
-                NodeRef result = null;
-
-                NodeRef ruleNodeRef = rule.getNodeRef();
-                if (ruleNodeRef != null)
-                {
-                    result = getOwningNodeRefRuleImpl(ruleNodeRef);
-                }
-
-                return result;
+                result = getOwningNodeRefRuleImpl(ruleNodeRef);
             }
+
+            return result;
         }, AuthenticationUtil.getSystemUserName());
     }
 
@@ -1525,21 +1496,16 @@ public class RuleServiceImpl
     public NodeRef getOwningNodeRef(final Action action)
     {
         // Run from system user: https://issues.alfresco.com/jira/browse/ALF-607
-        return AuthenticationUtil.runAs(new AuthenticationUtil.RunAsWork<>()
-        {
+        return AuthenticationUtil.runAs(() -> {
 
-            public NodeRef doWork() throws Exception
+            NodeRef result = null;
+            NodeRef actionNodeRef = action.getNodeRef();
+            if (actionNodeRef != null)
             {
-
-                NodeRef result = null;
-                NodeRef actionNodeRef = action.getNodeRef();
-                if (actionNodeRef != null)
-                {
-                    result = getOwningNodeRefActionImpl(actionNodeRef);
-                }
-
-                return result;
+                result = getOwningNodeRefActionImpl(actionNodeRef);
             }
+
+            return result;
         }, AuthenticationUtil.getSystemUserName());
     }
 

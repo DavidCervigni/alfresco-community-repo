@@ -28,17 +28,14 @@ package org.alfresco.repo.tagging;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Serializable;
-import java.nio.charset.StandardCharsets;
 import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -46,7 +43,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.alfresco.error.AlfrescoRuntimeException;
 import org.alfresco.model.ContentModel;
 import org.alfresco.query.EmptyPagingResults;
 import org.alfresco.query.PagingRequest;
@@ -64,9 +60,7 @@ import org.alfresco.repo.policy.Behaviour.NotificationFrequency;
 import org.alfresco.repo.policy.JavaBehaviour;
 import org.alfresco.repo.policy.PolicyComponent;
 import org.alfresco.repo.security.authentication.AuthenticationUtil;
-import org.alfresco.repo.security.authentication.AuthenticationUtil.RunAsWork;
 import org.alfresco.repo.transaction.AlfrescoTransactionSupport;
-import org.alfresco.util.transaction.TransactionListener;
 import org.alfresco.service.cmr.action.Action;
 import org.alfresco.service.cmr.action.ActionService;
 import org.alfresco.service.cmr.repository.ChildAssociationRef;
@@ -89,6 +83,7 @@ import org.alfresco.service.namespace.QName;
 import org.alfresco.util.ISO9075;
 import org.alfresco.util.Pair;
 import org.alfresco.util.ParameterCheck;
+import org.alfresco.util.transaction.TransactionListener;
 import org.apache.commons.lang3.StringEscapeUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -877,7 +872,7 @@ public class TaggingServiceImpl implements TaggingService,
                 }
                 final boolean hasMoreItems = end < totalItems;
 
-                return new PagingResults<>()
+                return new PagingResults<Pair<NodeRef, String>>()
                 {
                     @Override
                     public List<Pair<NodeRef, String>> getPage()
@@ -928,7 +923,7 @@ public class TaggingServiceImpl implements TaggingService,
         final Pair<Integer, Integer> totalResultCount = rootCategories.getTotalResultCount();
         final String queryExecutionId = rootCategories.getQueryExecutionId();
 
-        return new PagingResults<>()
+        return new PagingResults<Pair<NodeRef, String>>()
         {
             @Override
             public List<Pair<NodeRef, String>> getPage()

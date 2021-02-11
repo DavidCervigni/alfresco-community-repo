@@ -226,7 +226,7 @@ public class PerformanceNodeServiceTest extends TestCase
             {
                System.out.println("Flushing transaction cache at nodecount: " + nodeCount); 
                System.out.println("At time index " + diffTime + "ms");
-               AlfrescoTransactionSupport.flush();
+               //AlfrescoTransactionSupport.flush();
             }
             if (nodeCount % 100 == 0)
             {

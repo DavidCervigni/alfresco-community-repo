@@ -30,9 +30,9 @@ import org.apache.commons.logging.LogFactory;
  */
 public class DefaultAsynchronouslyRefreshedCacheRegistry implements AsynchronouslyRefreshedCacheRegistry
 {
-    private static Log logger = LogFactory.getLog(DefaultAsynchronouslyRefreshedCacheRegistry.class);
+    private static final Log logger = LogFactory.getLog(DefaultAsynchronouslyRefreshedCacheRegistry.class);
     
-    private List<RefreshableCacheListener> listeners = new LinkedList<RefreshableCacheListener>();
+    private final List<RefreshableCacheListener> listeners = new LinkedList<>();
 
     @Override
     public void register(RefreshableCacheListener listener)

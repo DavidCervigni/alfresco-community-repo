@@ -97,14 +97,11 @@ public abstract class AlfrescoTransactionSupport extends TransactionSupportUtil
             return TxnReadState.TXN_NONE;
         }
         // Find the read-write state of the txn
-        else if (TransactionSynchronizationManager.isCurrentTransactionReadOnly())
+        if (TransactionSynchronizationManager.isCurrentTransactionReadOnly())
         {
             return TxnReadState.TXN_READ_ONLY;
         }
-        else
-        {
-            return TxnReadState.TXN_READ_WRITE;
-        }
+        return TxnReadState.TXN_READ_WRITE;
     }
     
     /**
@@ -117,8 +114,7 @@ public abstract class AlfrescoTransactionSupport extends TransactionSupportUtil
      */
     public static void checkTransactionReadState(boolean requireReadWrite)
     {
-        TxnReadState readState = AlfrescoTransactionSupport.getTransactionReadState();
-        switch (readState)
+        switch (AlfrescoTransactionSupport.getTransactionReadState())
         {
             case TXN_NONE:
                 throw new IllegalStateException(

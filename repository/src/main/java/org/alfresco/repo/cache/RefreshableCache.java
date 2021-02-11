@@ -40,19 +40,10 @@ public interface RefreshableCache <T>
      * 
      * @return T
      */
-    public T get();
+    T get();
     
     /**
      * Refresh the cache asynchronously.
      */
-    public void refresh();
-
-//    /**
-//     * Register to be informed when the cache is updated in the background.
-//     * 
-//     * Note: it is up to the implementation to provide any transactional wrapping.
-//     * Transactional wrapping is not required to invalidate a shared cache entry directly via a transactional cache 
-//     * @param listener
-//     */
-//    void register(RefreshableCacheListener listener);
+    void refresh();
 }

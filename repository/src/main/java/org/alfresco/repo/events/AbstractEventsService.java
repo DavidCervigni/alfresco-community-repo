@@ -654,14 +654,8 @@ public abstract class AbstractEventsService implements TransactionListener
         for(final Path path : nodePaths)
         {
             // run as system because the events system is a system service
-            String displayPath = AuthenticationUtil.runAsSystem(new RunAsWork<>()
-            {
-                @Override
-                public String doWork() throws Exception
-                {
-                    return path.toDisplayPath(nodeService, permissionService);
-                }
-            });
+            String displayPath = AuthenticationUtil.runAsSystem(
+                () -> path.toDisplayPath(nodeService, permissionService));
 
             StringBuilder pathStr = new StringBuilder(displayPath);
             if(toAppend != null && toAppend.size() > 0)
@@ -843,70 +837,66 @@ public abstract class AbstractEventsService implements TransactionListener
     protected NodeInfo getNodeInfo(final NodeRef nodeRef, final String eventType)
     {
 
-        return AuthenticationUtil.runAsSystem(new RunAsWork<>()
-        {
-            public NodeInfo doWork() throws Exception
+        return AuthenticationUtil.runAsSystem(() -> {
+            NodeInfo nodeInfo1 = null;
+
+            String txnId = AlfrescoTransactionSupport.getTransactionId();
+
+            if (!includeEventType(eventType))
             {
-                NodeInfo nodeInfo1 = null;
+                nodeInfo1 = new NodeInfo(eventType, null, null, nodeRef, null, null, null, null,
+                    null, null, null, null,
+                    false, null, null);
+            }
+            else if (nodeRef == null || !nodeService.exists(nodeRef))
+            {
+                nodeInfo1 = new NodeInfo(eventType, txnId, null, nodeRef, null, null, null,
+                    null, null, null, null, false,
+                    true, false, null);
+            }
+            else
+            {
+                FileFilterMode.Client filterclient = FileFilterMode.getClient();
+                Visibility visibility = hiddenAspect.getVisibility(filterclient, nodeRef);
+                QName type = nodeService.getType(nodeRef);
 
-                String txnId = AlfrescoTransactionSupport.getTransactionId();
-
-                if (!includeEventType(eventType))
-                {
-                    nodeInfo1 = new NodeInfo(eventType, null, null, nodeRef, null, null, null, null,
-                        null, null, null, null,
-                        false, null, null);
-                }
-                else if (nodeRef == null || !nodeService.exists(nodeRef))
+                if (!typeMatches(type))
                 {
                     nodeInfo1 = new NodeInfo(eventType, txnId, null, nodeRef, null, null, null,
-                        null, null, null, null, false,
-                        true, false, null);
+                        null, null, null,
+                        null, true, true, false, false);
+                }
+                else if (!visibility.equals(Visibility.Visible))
+                {
+                    nodeInfo1 = new NodeInfo(eventType, txnId, null, nodeRef, null, null, null,
+                        null, null, null,
+                        null, true, true, true, true);
                 }
                 else
                 {
-                    FileFilterMode.Client filterclient = FileFilterMode.getClient();
-                    Visibility visibility = hiddenAspect.getVisibility(filterclient, nodeRef);
-                    QName type = nodeService.getType(nodeRef);
+                    SiteInfo siteInfo = siteService.getSite(nodeRef);
+                    String siteId = (siteInfo != null ? siteInfo.getShortName() : null);
 
-                    if (!typeMatches(type))
-                    {
-                        nodeInfo1 = new NodeInfo(eventType, txnId, null, nodeRef, null, null, null,
-                            null, null, null,
-                            null, true, true, false, false);
-                    }
-                    else if (!visibility.equals(Visibility.Visible))
-                    {
-                        nodeInfo1 = new NodeInfo(eventType, txnId, null, nodeRef, null, null, null,
-                            null, null, null,
-                            null, true, true, true, true);
-                    }
-                    else
-                    {
-                        SiteInfo siteInfo = siteService.getSite(nodeRef);
-                        String siteId = (siteInfo != null ? siteInfo.getShortName() : null);
+                    Set<QName> aspects = nodeService.getAspects(nodeRef);
 
-                        Set<QName> aspects = nodeService.getAspects(nodeRef);
+                    final String name = (String) nodeService.getProperty(nodeRef,
+                        ContentModel.PROP_NAME);
+                    List<Path> nodePaths = Collections.singletonList(
+                        nodeService.getPath(nodeRef));
 
-                        final String name = (String) nodeService.getProperty(nodeRef,
-                            ContentModel.PROP_NAME);
-                        List<Path> nodePaths = Collections.singletonList(
-                            nodeService.getPath(nodeRef));
+                    Date modifiedTime = (Date) nodeService.getProperty(nodeRef,
+                        ContentModel.PROP_MODIFIED);
+                    Long modificationTimestamp = (modifiedTime != null ? modifiedTime.getTime() : null);
 
-                        Date modifiedTime = (Date) nodeService.getProperty(nodeRef,
-                            ContentModel.PROP_MODIFIED);
-                        Long modificationTimestamp = (modifiedTime != null ? modifiedTime.getTime() : null);
-
-                        Status status = nodeService.getNodeStatus(nodeRef);
-                        Client client = ClientUtil.from(filterclient);
-                        nodeInfo1 = new NodeInfo(eventType, txnId, name, nodeRef, status, nodePaths,
-                            modificationTimestamp,
-                            type, aspects, siteId, client, true, true, true, true);
-                    }
+                    Status status = nodeService.getNodeStatus(nodeRef);
+                    Client client = ClientUtil.from(filterclient);
+                    nodeInfo1 = new NodeInfo(eventType, txnId, name, nodeRef, status, nodePaths,
+                        modificationTimestamp,
+                        type, aspects, siteId, client, true, true, true, true);
                 }
-
-                return nodeInfo1;
             }
+
+            return nodeInfo1;
         });
     }
 }
